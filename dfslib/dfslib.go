@@ -8,7 +8,11 @@ file system (DFS) system to be used in assignment 2 of UBC CS 416
 
 package dfslib
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"net"
+)
 
 // A Chunk is the unit of reading/writing in DFS.
 type Chunk [32]byte
@@ -179,7 +183,35 @@ type DFS interface {
 // - LocalPathError
 // - Networking errors related to localIP or serverAddr
 func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err error) {
-	// TODO
-	// For now return LocalPathError
-	return nil, LocalPathError(localPath)
+	e := CreateLocalFileStore(localPath)
+	if e != nil {
+		err = LocalPathError(localPath)
+		return nil, err
+	}
+
+	serverTCPAddr, e := net.ResolveTCPAddr("tcp", serverAddr)
+	if e != nil {err = e}
+
+	localTCPAddr, e := net.ResolveTCPAddr("tcp", localIP)
+	if e != nil {err = e}
+
+	conn := DFSConnection{serverTCPAddr, localTCPAddr, localPath}
+
+	return conn, err
+}
+
+// CreateLocalFileStore creates a local directory to store files on the
+// client, if the directory does not already exist.
+//
+// Returns an error if the directory cannot be created.
+func CreateLocalFileStore(localPath string) error {
+	// Attempt to open existing directory
+	_, err := os.Stat(localPath)
+	if err == nil {
+		// Directory already exists
+		return nil
+	}
+	err = os.MkdirAll(localPath, os.ModePerm)
+	return err
+
 }
