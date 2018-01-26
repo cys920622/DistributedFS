@@ -31,6 +31,8 @@ const (
 	DREAD
 )
 
+const UnsetClientID = -1
+
 ////////////////////////////////////////////////////////////////////////////////////////////
 // <ERROR DEFINITIONS>
 
@@ -199,6 +201,7 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 	if e != nil {err = e}
 
 	conn := DFSConnection{
+		UnsetClientID,
 		serverTCPAddr,
 		localTCPAddr,
 		localPath,

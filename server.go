@@ -6,7 +6,12 @@ import (
 	"net/rpc"
 	"os"
 	"./shared"
+	"time"
+	"log"
 )
+
+const ClientTimeoutThreshold = 2.5
+const ClientMonitorPeriod = 2
 
 type Server struct {
 	ConnectedClients, DisconnectedClients map[int]*shared.ClientRegistrationInfo
@@ -34,6 +39,7 @@ func main() {
 
 	if err == nil {
 		fmt.Println("Accepting clients at " + addr.String())
+		go server.monitorClientConnections()
 		rpc.Accept(tcpListener)
 	} else {
 		fmt.Println("Failed to start server")
@@ -41,12 +47,8 @@ func main() {
 	}
 }
 
-
+// todo - document
 func (s *Server) RegisterClient(args *shared.ClientRegistrationInfo, reply *int) error {
-	// todo - do this in a goroutine
-	fmt.Printf("Registering client...\n")
-	fmt.Printf("ID: %d\n", args.ClientId)
-	fmt.Printf("Address: %s\n", args.ClientAddress)
 
 	if args.ClientId == -1 {
 		// Case: new client
@@ -61,14 +63,43 @@ func (s *Server) RegisterClient(args *shared.ClientRegistrationInfo, reply *int)
 		*reply = args.ClientId
 	}
 
+	log.Printf("Client %d connected\n", *reply)
 	// todo - establish bidirectional RPC connection
-	// todo - start listening for heartbeat
 
 	return nil
 }
+
+// todo - document
 func (s *Server) CheckFileExists(args *shared.Args, reply *string) error {
 	fmt.Println("CheckFileExists called")
 	*reply = args.Filename + args.B
 
 	return nil
+}
+
+// todo - document, rename function?
+func (s *Server) PingServer(args *shared.ClientHeartbeat, reply *int) error {
+	s.ConnectedClients[args.ClientId].LatestHeartbeat = args.Timestamp
+	*reply = args.ClientId
+	return nil
+}
+
+// Periodically can ConnectedClients to remove clients that have timed out
+func (s *Server) monitorClientConnections() {
+	for {
+		time.Sleep(ClientMonitorPeriod * time.Second)
+		timeNow := time.Now().UTC()
+		for c, v := range s.ConnectedClients {
+			timeDiff := timeNow.Sub(v.LatestHeartbeat).Seconds()
+			if timeDiff > ClientTimeoutThreshold {
+				s.disconnectClient(c)
+			}
+		}
+	}
+}
+
+func (s *Server) disconnectClient(cid int) {
+	log.Printf("Client %d disconnected\n", cid)
+	s.DisconnectedClients[cid] = s.ConnectedClients[cid]
+	delete(s.ConnectedClients, cid)
 }

@@ -7,12 +7,14 @@ import (
 	"net/rpc"
 	"fmt"
 	"../shared"
+	"time"
 )
 
 // todo - remove
 
 type DFSConnection struct {
 	// Struct fields
+	clientId int
 	serverAddr *net.TCPAddr
 	localAddr *net.TCPAddr
 	localPath string
@@ -71,21 +73,44 @@ func (c DFSConnection) UMountDFS() (err error) {
 // Returns an error if there was an issue connecting the server.
 func (c *DFSConnection) Connect() error {
 	server, err := rpc.Dial("tcp", c.serverAddr.String())
-	if err == nil {
-		args := shared.ClientRegistrationInfo{ClientId: -1, ClientAddress: c.localAddr.String()}
-		var cid int
-		err = server.Call("Server.RegisterClient", args, &cid)
-		if cid != -1 && err == nil {
-			fmt.Printf("Server accepted connection for ClientID: %d\n", cid)
-			// todo - store this ClientID on disk
-			// todo - start sending heartbeat
-			c.rpcClient = server
-			return nil
-		} else {
-			return err
+	if err != nil {return err}
+
+	args := shared.ClientRegistrationInfo{
+		ClientId: c.clientId,
+		ClientAddress: c.localAddr.String(),
+		LatestHeartbeat: time.Now().UTC(),
+		}
+
+	var cid int
+	err = server.Call("Server.RegisterClient", args, &cid)
+	if cid == UnsetClientID || err != nil {return err}
+
+	c.rpcClient = server
+	c.clientId = cid
+	// todo - store this ClientID on disk
+
+	// Start sending heartbeat to server
+	go c.sendHeartbeat()
+
+	// todo - remove this pausing block ######################################
+	for {
+		time.Sleep(1 * time.Second)
+	}
+	return nil
+}
+
+func (c *DFSConnection) sendHeartbeat() {
+	for {
+		time.Sleep(2 * time.Second)
+		args := shared.ClientHeartbeat{ClientId: c.clientId, Timestamp: time.Now().UTC()}
+		var pingReply int
+		err := c.rpcClient.Call("Server.PingServer", args, &pingReply)
+		if err != nil {
+			fmt.Println("Server stopped responding")
+		} else if pingReply != c.clientId {
+			fmt.Printf("Unexpected response '%d' from server for client %d", pingReply, c.clientId)
 		}
 	}
-	return err
 }
 
 // isFileNameValid returns true if these requirements are met:
