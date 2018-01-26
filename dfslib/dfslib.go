@@ -192,10 +192,20 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 	serverTCPAddr, e := net.ResolveTCPAddr("tcp", serverAddr)
 	if e != nil {err = e}
 
-	localTCPAddr, e := net.ResolveTCPAddr("tcp", localIP)
+	//todo - hardcoded
+	localPort := ":18081"
+
+	localTCPAddr, e := net.ResolveTCPAddr("tcp", localIP + localPort)
 	if e != nil {err = e}
 
-	conn := DFSConnection{serverTCPAddr, localTCPAddr, localPath}
+	conn := DFSConnection{
+		serverTCPAddr,
+		localTCPAddr,
+		localPath,
+		nil,
+		}
+	networkErr := conn.Connect()
+	if err == nil && networkErr != nil {err = networkErr}
 
 	return conn, err
 }
@@ -204,6 +214,7 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 // client, if the directory does not already exist.
 //
 // Returns an error if the directory cannot be created.
+// todo - don't create the directory, just check that it exists and throw err if not (@199)
 func CreateLocalFileStore(localPath string) error {
 	// Attempt to open existing directory
 	_, err := os.Stat(localPath)

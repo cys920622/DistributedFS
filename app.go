@@ -17,7 +17,7 @@ import "fmt"
 import "os"
 
 func main() {
-	serverAddr := "127.0.0.1:8080"
+	serverAddr := "127.0.0.1:8081"
 	localIP := "127.0.0.1"
 	localPath := "/tmp/dfs-dev/"
 
