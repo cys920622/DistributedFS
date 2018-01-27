@@ -1,6 +1,7 @@
 package dfslib
 
 type File struct {
+	Data []byte
 	// Struct fields
 }
 

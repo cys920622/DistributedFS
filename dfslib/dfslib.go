@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"os"
 	"net"
+	"log"
+	"../shared"
 )
 
 // A Chunk is the unit of reading/writing in DFS.
@@ -185,11 +187,9 @@ type DFS interface {
 // - LocalPathError
 // - Networking errors related to localIP or serverAddr
 func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err error) {
-	e := CreateLocalFileStore(localPath)
-	if e != nil {
-		err = LocalPathError(localPath)
-		return nil, err
-	}
+
+	e := CheckLocalPath(localPath)
+	if e != nil {return nil, e}
 
 	serverTCPAddr, e := net.ResolveTCPAddr("tcp", serverAddr)
 	if e != nil {err = e}
@@ -201,7 +201,7 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 	if e != nil {err = e}
 
 	conn := DFSConnection{
-		UnsetClientID,
+		shared.UnsetClientId,
 		serverTCPAddr,
 		localTCPAddr,
 		localPath,
@@ -213,19 +213,16 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 	return conn, err
 }
 
-// CreateLocalFileStore creates a local directory to store files on the
-// client, if the directory does not already exist.
-//
-// Returns an error if the directory cannot be created.
+// CheckLocalPath returns an error if the directory cannot be created.
 // todo - don't create the directory, just check that it exists and throw err if not (@199)
-func CreateLocalFileStore(localPath string) error {
+func CheckLocalPath(localPath string) error {
 	// Attempt to open existing directory
 	_, err := os.Stat(localPath)
 	if err == nil {
 		// Directory already exists
 		return nil
+	} else {
+		log.Println("Bad local path")
+		return LocalPathError(localPath)
 	}
-	err = os.MkdirAll(localPath, os.ModePerm)
-	return err
-
 }

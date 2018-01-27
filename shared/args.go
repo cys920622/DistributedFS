@@ -2,9 +2,23 @@ package shared
 
 import "time"
 
-// todo - remove
-type Args struct {
-	Filename, B string
+const UnsetClientId = -1
+
+type FileMode int
+
+const (
+	// Read mode.
+	READ FileMode = iota
+
+	// Read/Write mode.
+	WRITE
+
+	// Disconnected read mode.
+	DREAD
+)
+
+type FileExistsArgs struct {
+	Filename string
 }
 
 type ClientRegistrationInfo struct {
@@ -16,4 +30,17 @@ type ClientRegistrationInfo struct {
 type ClientHeartbeat struct {
 	ClientId int
 	Timestamp time.Time
+}
+
+type OpenFileArgs struct {
+	ClientId int
+	Filename string
+	Mode FileMode
+}
+
+
+
+type OpenFileResponse struct {
+	FileData []byte
+	Error    error
 }

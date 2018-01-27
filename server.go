@@ -12,9 +12,25 @@ import (
 
 const ClientTimeoutThreshold = 2.5
 const ClientMonitorPeriod = 2
+const FirstClientId = 1
 
+type ChunkInfo struct {
+	CurrentVersion int
+	// ChunkOwners maps a chunk version to owners by Client ID
+	ChunkOwners map[int][]int
+}
+
+type FileInfo struct {
+	// ChunkInfo represents chunk ownership. Maps chunk # to client ID.
+	// todo - need lock
+	ChunkInfo map[int]*ChunkInfo
+	// LockHolder represents the Client ID of the client who is currently
+	// holding the write lock for the file.
+	LockHolder int
+}
 type Server struct {
 	ConnectedClients, DisconnectedClients map[int]*shared.ClientRegistrationInfo
+	Files map[string]*FileInfo
 	NextClientId int
 }
 
@@ -25,14 +41,15 @@ func main() {
 	server := &Server{
 		make(map[int]*shared.ClientRegistrationInfo),
 		make(map[int]*shared.ClientRegistrationInfo),
-		0,
+		make(map[string]*FileInfo),
+		FirstClientId,
 	}
 	rpc.Register(server)
 
 	addr, err := net.ResolveTCPAddr("tcp", clientIncomingAddr)
 	if err != nil {
-		fmt.Println("Failed to resolve address: " + clientIncomingAddr)
-		fmt.Println(err)
+		log.Println("Failed to resolve address: " + clientIncomingAddr)
+		log.Println(err)
 	}
 
 	tcpListener, err := net.ListenTCP("tcp", addr)
@@ -43,11 +60,13 @@ func main() {
 		rpc.Accept(tcpListener)
 	} else {
 		fmt.Println("Failed to start server")
-		fmt.Println(err)
+		log.Println(err)
 	}
 }
 
-// todo - document
+// Adds clients to the connected clients list.
+// When a new client connects, assign a unique ClientID.
+// Restore client metadata if one reconnects.
 func (s *Server) RegisterClient(args *shared.ClientRegistrationInfo, reply *int) error {
 
 	if args.ClientId == -1 {
@@ -69,12 +88,18 @@ func (s *Server) RegisterClient(args *shared.ClientRegistrationInfo, reply *int)
 	return nil
 }
 
-// todo - document
-func (s *Server) CheckFileExists(args *shared.Args, reply *string) error {
-	fmt.Println("CheckFileExists called")
-	*reply = args.Filename + args.B
-
+// RPC call target
+func (s *Server) CheckFileExists(args *shared.FileExistsArgs, reply *bool) error {
+	log.Printf("CheckFileExists: %s\n", args.Filename)
+	*reply = s.doesFileExist(args.Filename)
 	return nil
+}
+
+// doesFileExist checks if the filename has been seen by the server.
+// It does NOT check whether all the chunks are online.
+func (s *Server) doesFileExist(filename string) bool {
+	_, exists := s.Files[filename]
+	return exists
 }
 
 // todo - document, rename function?
@@ -83,6 +108,42 @@ func (s *Server) PingServer(args *shared.ClientHeartbeat, reply *int) error {
 	*reply = args.ClientId
 	return nil
 }
+
+
+// todo - document
+// todo - should return array of bytes
+func (s *Server) OpenFile(args *shared.OpenFileArgs, reply *shared.OpenFileResponse) error {
+	if !s.doesFileExist(args.Filename) {
+		// Filename has never been seen by server. Create new file.
+		s.createNewFile(args)
+		*reply = shared.OpenFileResponse{FileData: nil, Error: nil}
+		return nil
+	} else {
+		fileInfo := s.Files[args.Filename]
+		if len(fileInfo.ChunkInfo) == 0 {
+			// File exists but it was never written to
+			*reply = shared.OpenFileResponse{FileData: nil, Error: nil}
+			return nil
+		} else {
+			// File is registered and has been written to
+			// todo - get latest chunks that are reachable
+			return nil
+
+		}
+	}
+}
+
+// createNewFile adds a new file to the server's file metadata.
+// There is no initial information about any chunk.
+func (s *Server) createNewFile(args *shared.OpenFileArgs) {
+	fileInfo := FileInfo{make(map[int]*ChunkInfo), shared.UnsetClientId}
+	// Lock file if opened in WRITE mode
+	if args.Mode == shared.WRITE {fileInfo.LockHolder = args.ClientId}
+	s.Files[args.Filename] = &fileInfo
+	log.Printf("Created file: %s\n", args.Filename)
+}
+
+
 
 // Periodically can ConnectedClients to remove clients that have timed out
 func (s *Server) monitorClientConnections() {
@@ -102,4 +163,13 @@ func (s *Server) disconnectClient(cid int) {
 	log.Printf("Client %d disconnected\n", cid)
 	s.DisconnectedClients[cid] = s.ConnectedClients[cid]
 	delete(s.ConnectedClients, cid)
+	s.unlockByClientId(cid)
+	// todo - close file
 }
+
+func (s *Server) unlockByClientId(cid int) {
+	for _, file := range s.Files {
+		if file.LockHolder == cid {file.LockHolder = shared.UnsetClientId}
+	}
+}
+

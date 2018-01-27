@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"../shared"
 	"time"
+	"log"
 )
 
 // todo - remove
@@ -32,34 +33,49 @@ func (c DFSConnection) LocalFileExists(fname string) (exists bool, err error) {
 }
 
 func (c DFSConnection) GlobalFileExists(fname string) (exists bool, err error) {
-	// todo - if file exists locally, does it exist globally?
 	if !isFileNameValid(fname) {return false, BadFilenameError(fname)}
+	if !c.isConnected() {return false, DisconnectedError(c.serverAddr.String())}
 
-	existsLocal, _ := c.LocalFileExists(fname)
-
-	if existsLocal {
-		return true, nil
-	} else if c.rpcClient != nil {
-		// todo - implement
-		//args := shared.Args{Filename: "string1", B: "string2"}
-		//var reply string
-		//err = c.rpcClient.Call("Server.CheckFileExists", args, &reply)
-		//fmt.Println(reply)
-		// todo - remove dummy return values
-		return false, nil
-	} else {
-		return false, DisconnectedError(c.serverAddr.String())
-	}
+	args := shared.FileExistsArgs{Filename: fname}
+	var fileExistsReply bool
+	err = c.rpcClient.Call("Server.CheckFileExists", args, &fileExistsReply)
+	fmt.Println(fileExistsReply)
+	return fileExistsReply, nil
 }
 
 func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) {
-	// Establish TCP connection to server
-	if mode == READ {
-		return c.OpenReadMode(fname)
-	} else if mode == WRITE {
-		return c.OpenWriteMode(fname)
+	if !isFileNameValid(fname) {return nil, BadFilenameError(fname)}
+
+	if mode == READ || mode == WRITE {
+		if !c.isConnected() {return nil, DisconnectedError(c.serverAddr.String())}
+
+		openArgs := shared.OpenFileArgs{
+			ClientId: c.clientId,
+			Filename: fname,
+			Mode:     convertMode(mode),
+		}
+		var openFileResponse shared.OpenFileResponse
+		err = c.rpcClient.Call("Server.OpenFile", openArgs, &openFileResponse)
+		if openFileResponse.Error != nil {
+			// todo - respond to error
+		} else {
+			if openFileResponse.FileData == nil {
+				// File is new or has never been written to
+				log.Println("File is new or has never been written to")
+				// todo - create file locally
+			} else {
+				// File has been retrieved from server
+				// todo - download file from server
+			}
+		}
+
+		f := File{openFileResponse.FileData}
+
+		return f, openFileResponse.Error
+
 	} else {
-		return c.OpenDReadMode(fname)
+		// todo - need to do DREAD
+		return nil, nil
 	}
 }
 
@@ -83,7 +99,7 @@ func (c *DFSConnection) Connect() error {
 
 	var cid int
 	err = server.Call("Server.RegisterClient", args, &cid)
-	if cid == UnsetClientID || err != nil {return err}
+	if cid == shared.UnsetClientId || err != nil {return err}
 
 	c.rpcClient = server
 	c.clientId = cid
@@ -92,26 +108,35 @@ func (c *DFSConnection) Connect() error {
 	// Start sending heartbeat to server
 	go c.sendHeartbeat()
 
-	// todo - remove this pausing block ######################################
-	for {
-		time.Sleep(1 * time.Second)
-	}
 	return nil
 }
 
 func (c *DFSConnection) sendHeartbeat() {
 	for {
 		time.Sleep(2 * time.Second)
-		args := shared.ClientHeartbeat{ClientId: c.clientId, Timestamp: time.Now().UTC()}
-		var pingReply int
-		err := c.rpcClient.Call("Server.PingServer", args, &pingReply)
-		if err != nil {
-			fmt.Println("Server stopped responding")
-		} else if pingReply != c.clientId {
-			fmt.Printf("Unexpected response '%d' from server for client %d", pingReply, c.clientId)
-		}
+		c.PingServer()
 	}
 }
+
+func (c *DFSConnection) isConnected() bool {
+	// todo - reconsider this approach? check connected state instead from periodic ping?
+	return c.PingServer() > 0
+}
+
+func (c *DFSConnection) PingServer() int {
+	args := shared.ClientHeartbeat{ClientId: c.clientId, Timestamp: time.Now().UTC()}
+	var pingReply int
+	err := c.rpcClient.Call("Server.PingServer", args, &pingReply)
+	if err != nil {
+		// todo - remove, or keep state
+		fmt.Println("Server stopped responding")
+	} else if pingReply != c.clientId {
+		fmt.Printf("Unexpected response '%d' from server for client %d", pingReply, c.clientId)
+	}
+	return pingReply
+}
+
+
 
 // isFileNameValid returns true if these requirements are met:
 // - fname is 1-16 chars long
@@ -123,6 +148,18 @@ func isFileNameValid(fname string) bool {
 
 	matched, _ := regexp.MatchString("^[a-z0-9]+$", fname)
 	return matched
+}
+
+// Convert dfslib.FileMode into a type shareable between server and client
+func convertMode(mode FileMode) shared.FileMode {
+	if mode == READ {
+		return shared.READ
+	}
+	if mode == WRITE {
+		return shared.WRITE
+	} else {
+		return shared.DREAD
+	}
 }
 
 func (c DFSConnection) OpenReadMode(fname string) (f DFSFile, err error) {
