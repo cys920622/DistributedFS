@@ -3,8 +3,10 @@ package dfslib
 import "net/rpc"
 import (
 	"../shared"
+	"os"
 )
 
+// todo - clean up this struct, most stuff is in c already
 type File struct {
 	filename string
 	clientId int
@@ -12,7 +14,6 @@ type File struct {
 	localPath string
 	rpcClient *rpc.Client
 	c *DFSConnection
-	// Struct fields
 }
 
 // Reads chunk number chunkNum into storage pointed to by
@@ -41,6 +42,7 @@ func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
 // - BadFileModeError (in READ,DREAD modes)
 // - DisconnectedError (in WRITE mode)
 // - WriteModeTimeoutError (in WRITE mode)
+// NOTE - assumes file exists locally as a result of Open().
 func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 	if f.c.currentMode != WRITE {return BadFileModeError(f.c.currentMode)}
 
@@ -50,21 +52,23 @@ func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 		ClientId:  f.c.clientId,
 		Filename:  f.filename,
 		ChunkNum:  chunkNum,
-		ChunkData: convertChunk(chunk),
 	}
 	var response shared.WriteChunkResponse
 	err = f.c.rpcClient.Call("Server.WriteChunk", request, &response)
+	if err != nil {return err}
 
 	if !response.Success {
-		// todo - maybe it should wait until lock is available
+		// todo - maybe it should wait until lock is available? ATM this is not even possible
 		return WriteModeTimeoutError("???")
-	} else {
-		// Commit write locally
 	}
-	// todo - implement
+	// Commit write locally
+	diskFile, err := os.OpenFile(f.getFilePath(), os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	_, err = diskFile.WriteAt(chunk[:], getByteOffsetFromChunkNum(chunkNum))
 
-	return nil
+	diskFile.Sync()
+	diskFile.Close()
 
+	return err
 }
 
 // Closes the file/cleans up. Can return the following errors:
@@ -80,9 +84,13 @@ func (f File) getFilePath() string {
 }
 
 // Convert dfslib.Chunk into a type shareable between server and client
-func convertChunk(chunk *Chunk) shared.Chunk {
+func convertChunkToChunk(chunk *Chunk) shared.Chunk {
 	var c shared.Chunk
 	copy(c[:], chunk[:])
 	return c
 
+}
+
+func getByteOffsetFromChunkNum(chunkNum uint8) int64 {
+	return int64(chunkNum) * int64(shared.BytesPerChunk)
 }

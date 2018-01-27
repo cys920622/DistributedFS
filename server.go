@@ -22,8 +22,7 @@ type ChunkInfo struct {
 
 type FileInfo struct {
 	// ChunkInfo represents chunk ownership. Maps chunk # to client ID.
-	// todo - need lock
-	ChunkInfo map[int]*ChunkInfo
+	ChunkInfo map[uint8]*ChunkInfo
 	// LockHolder represents the Client ID of the client who is currently
 	// holding the write lock for the file.
 	LockHolder int
@@ -123,7 +122,7 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 		if req.Mode == shared.WRITE {
 			if !s.isFileLockAvailable(req.Filename, req.ClientId) {
 				// Write access conflict occurs
-				fmt.Println("Write conflict")
+				log.Printf("Write conflict: %s\n", req.Filename)
 				*reply = shared.OpenFileResponse{FileData: nil, Success: false}
 				return nil
 			} else {
@@ -138,6 +137,7 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 		} else {
 			// File is registered and has been written to
 			// todo - get latest chunks that are reachable
+			*reply = shared.OpenFileResponse{FileData: nil, Success: true}
 			return nil
 
 		}
@@ -152,12 +152,25 @@ func (s *Server) GetLatestChunk(args *shared.GetLatestChunkRequest, reply *share
 	return nil
 }
 
-func (s *Server) WriteChunk(args *shared.WriteChunkRequest, reply *shared.WriteChunkResponse) error {
-	// todo - implement
-	fmt.Printf("Chunk: %s\n", string(args.ChunkData[:]))
 
-	time.Sleep(1 * time.Minute)
-	// todo
+// Assumes that the writer has the write lock.
+func (s *Server) WriteChunk(args *shared.WriteChunkRequest, reply *shared.WriteChunkResponse) error {
+	// Add client as newest chunk version owner and increment chunk version
+	fileInfo := s.Files[args.Filename]
+	if fileInfo.ChunkInfo[args.ChunkNum] == nil {
+		// Chunk has never been written to
+		owners := make(map[int][]int)
+		owners[0] = make([]int, args.ClientId)
+		fileInfo.ChunkInfo[args.ChunkNum] = &ChunkInfo{0, owners}
+	} else {
+		nv := fileInfo.ChunkInfo[args.ChunkNum].CurrentVersion + 1
+		fileInfo.ChunkInfo[args.ChunkNum].CurrentVersion = nv
+		fileInfo.ChunkInfo[args.ChunkNum].ChunkOwners[nv] = make([]int, args.ClientId)
+	}
+
+	log.Printf("Write: ClientId: %d, Filename %s, Ver: %d\n",
+		args.ClientId, args.Filename, fileInfo.ChunkInfo[args.ChunkNum].CurrentVersion)
+
 	*reply = shared.WriteChunkResponse{Success: true}
 
 	return nil
@@ -166,7 +179,7 @@ func (s *Server) WriteChunk(args *shared.WriteChunkRequest, reply *shared.WriteC
 // createNewFile adds a new file to the server's file metadata.
 // There is no initial information about any chunk.
 func (s *Server) createNewFile(args *shared.OpenFileRequest) {
-	fileInfo := FileInfo{make(map[int]*ChunkInfo), shared.UnsetClientId}
+	fileInfo := FileInfo{make(map[uint8]*ChunkInfo), shared.UnsetClientId}
 	// Lock file if opened in WRITE mode
 	if args.Mode == shared.WRITE {fileInfo.LockHolder = args.ClientId}
 	s.Files[args.Filename] = &fileInfo
@@ -198,8 +211,11 @@ func (s *Server) disconnectClient(clientId int) {
 }
 
 func (s *Server) unlockByClientId(clientId int) {
-	for _, file := range s.Files {
-		if file.LockHolder == clientId {file.LockHolder = shared.UnsetClientId}
+	for fn, fi := range s.Files {
+		if fi.LockHolder == clientId {
+			fi.LockHolder = shared.UnsetClientId
+			fmt.Printf("Unlocked %s\n", fn)
+			}
 	}
 }
 
