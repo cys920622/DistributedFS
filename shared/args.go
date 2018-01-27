@@ -1,10 +1,16 @@
 package shared
 
-import "time"
+import (
+	"time"
+)
 
 const UnsetClientId = -1
+const FileExtension = ".dfs"
+const ChunksPerFile = 256
+const BytesPerChunk = 32
 
 type FileMode int
+type Chunk [32]byte
 
 const (
 	// Read mode.
@@ -17,7 +23,7 @@ const (
 	DREAD
 )
 
-type FileExistsArgs struct {
+type FileExistsRequest struct {
 	Filename string
 }
 
@@ -32,15 +38,36 @@ type ClientHeartbeat struct {
 	Timestamp time.Time
 }
 
-type OpenFileArgs struct {
+type OpenFileRequest struct {
 	ClientId int
 	Filename string
 	Mode FileMode
 }
 
-
-
 type OpenFileResponse struct {
 	FileData []byte
-	Error    error
+	Success bool
+}
+
+type GetLatestChunkRequest struct {
+	ClientId int
+	Filename string
+	ChunkNum uint8
+	Mode FileMode
+}
+
+type GetLatestChunkResponse struct {
+	ChunkData Chunk
+	Error error
+}
+
+type WriteChunkRequest struct {
+	ClientId int
+	Filename string
+	ChunkNum uint8
+	ChunkData Chunk
+}
+
+type WriteChunkResponse struct {
+	Success bool
 }

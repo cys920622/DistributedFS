@@ -35,6 +35,7 @@ type Server struct {
 }
 
 
+
 func main() {
 	clientIncomingAddr := os.Args[1]
 
@@ -89,7 +90,7 @@ func (s *Server) RegisterClient(args *shared.ClientRegistrationInfo, reply *int)
 }
 
 // RPC call target
-func (s *Server) CheckFileExists(args *shared.FileExistsArgs, reply *bool) error {
+func (s *Server) CheckFileExists(args *shared.FileExistsRequest, reply *bool) error {
 	log.Printf("CheckFileExists: %s\n", args.Filename)
 	*reply = s.doesFileExist(args.Filename)
 	return nil
@@ -112,17 +113,27 @@ func (s *Server) PingServer(args *shared.ClientHeartbeat, reply *int) error {
 
 // todo - document
 // todo - should return array of bytes
-func (s *Server) OpenFile(args *shared.OpenFileArgs, reply *shared.OpenFileResponse) error {
-	if !s.doesFileExist(args.Filename) {
+func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileResponse) error {
+	if !s.doesFileExist(req.Filename) {
 		// Filename has never been seen by server. Create new file.
-		s.createNewFile(args)
-		*reply = shared.OpenFileResponse{FileData: nil, Error: nil}
+		s.createNewFile(req)
+		*reply = shared.OpenFileResponse{FileData: nil, Success: true}
 		return nil
 	} else {
-		fileInfo := s.Files[args.Filename]
+		if req.Mode == shared.WRITE {
+			if !s.isFileLockAvailable(req.Filename, req.ClientId) {
+				// Write access conflict occurs
+				fmt.Println("Write conflict")
+				*reply = shared.OpenFileResponse{FileData: nil, Success: false}
+				return nil
+			} else {
+				s.Files[req.Filename].LockHolder = req.ClientId
+			}
+		}
+		fileInfo := s.Files[req.Filename]
 		if len(fileInfo.ChunkInfo) == 0 {
 			// File exists but it was never written to
-			*reply = shared.OpenFileResponse{FileData: nil, Error: nil}
+			*reply = shared.OpenFileResponse{FileData: nil, Success: true}
 			return nil
 		} else {
 			// File is registered and has been written to
@@ -133,9 +144,28 @@ func (s *Server) OpenFile(args *shared.OpenFileArgs, reply *shared.OpenFileRespo
 	}
 }
 
+func (s *Server) GetLatestChunk(args *shared.GetLatestChunkRequest, reply *shared.GetLatestChunkResponse) error {
+
+	// todo - implement
+
+	time.Sleep(1 * time.Minute)
+	return nil
+}
+
+func (s *Server) WriteChunk(args *shared.WriteChunkRequest, reply *shared.WriteChunkResponse) error {
+	// todo - implement
+	fmt.Printf("Chunk: %s\n", string(args.ChunkData[:]))
+
+	time.Sleep(1 * time.Minute)
+	// todo
+	*reply = shared.WriteChunkResponse{Success: true}
+
+	return nil
+}
+
 // createNewFile adds a new file to the server's file metadata.
 // There is no initial information about any chunk.
-func (s *Server) createNewFile(args *shared.OpenFileArgs) {
+func (s *Server) createNewFile(args *shared.OpenFileRequest) {
 	fileInfo := FileInfo{make(map[int]*ChunkInfo), shared.UnsetClientId}
 	// Lock file if opened in WRITE mode
 	if args.Mode == shared.WRITE {fileInfo.LockHolder = args.ClientId}
@@ -159,17 +189,21 @@ func (s *Server) monitorClientConnections() {
 	}
 }
 
-func (s *Server) disconnectClient(cid int) {
-	log.Printf("Client %d disconnected\n", cid)
-	s.DisconnectedClients[cid] = s.ConnectedClients[cid]
-	delete(s.ConnectedClients, cid)
-	s.unlockByClientId(cid)
+func (s *Server) disconnectClient(clientId int) {
+	log.Printf("Client %d disconnected\n", clientId)
+	s.DisconnectedClients[clientId] = s.ConnectedClients[clientId]
+	delete(s.ConnectedClients, clientId)
+	s.unlockByClientId(clientId)
 	// todo - close file
 }
 
-func (s *Server) unlockByClientId(cid int) {
+func (s *Server) unlockByClientId(clientId int) {
 	for _, file := range s.Files {
-		if file.LockHolder == cid {file.LockHolder = shared.UnsetClientId}
+		if file.LockHolder == clientId {file.LockHolder = shared.UnsetClientId}
 	}
 }
 
+func (s *Server) isFileLockAvailable(filename string, clientId int) bool {
+	lockHolder := s.Files[filename].LockHolder
+	return lockHolder == shared.UnsetClientId || lockHolder == clientId
+}

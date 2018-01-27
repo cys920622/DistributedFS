@@ -20,6 +20,7 @@ type DFSConnection struct {
 	localAddr *net.TCPAddr
 	localPath string
 	rpcClient *rpc.Client
+	currentMode FileMode
 }
 
 func (c DFSConnection) LocalFileExists(fname string) (exists bool, err error) {
@@ -36,7 +37,7 @@ func (c DFSConnection) GlobalFileExists(fname string) (exists bool, err error) {
 	if !isFileNameValid(fname) {return false, BadFilenameError(fname)}
 	if !c.isConnected() {return false, DisconnectedError(c.serverAddr.String())}
 
-	args := shared.FileExistsArgs{Filename: fname}
+	args := shared.FileExistsRequest{Filename: fname}
 	var fileExistsReply bool
 	err = c.rpcClient.Call("Server.CheckFileExists", args, &fileExistsReply)
 	fmt.Println(fileExistsReply)
@@ -46,32 +47,44 @@ func (c DFSConnection) GlobalFileExists(fname string) (exists bool, err error) {
 func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) {
 	if !isFileNameValid(fname) {return nil, BadFilenameError(fname)}
 
+	c.currentMode = mode
+
 	if mode == READ || mode == WRITE {
 		if !c.isConnected() {return nil, DisconnectedError(c.serverAddr.String())}
 
-		openArgs := shared.OpenFileArgs{
+		openArgs := shared.OpenFileRequest{
 			ClientId: c.clientId,
 			Filename: fname,
 			Mode:     convertMode(mode),
 		}
 		var openFileResponse shared.OpenFileResponse
 		err = c.rpcClient.Call("Server.OpenFile", openArgs, &openFileResponse)
-		if openFileResponse.Error != nil {
-			// todo - respond to error
-		} else {
-			if openFileResponse.FileData == nil {
-				// File is new or has never been written to
-				log.Println("File is new or has never been written to")
-				// todo - create file locally
-			} else {
-				// File has been retrieved from server
-				// todo - download file from server
-			}
+
+
+		if !openFileResponse.Success {
+			err = OpenWriteConflictError(fname)
+			return nil, err
+			// todo - this might not be the only error possible
 		}
 
-		f := File{openFileResponse.FileData}
+		if openFileResponse.FileData == nil {
+			log.Printf("Creating file on disk: %s\n", fname)
+			c.createLocalEmptyFile(fname)
+		} else {
+			// File has been retrieved from server
+			// todo - download file from server
+		}
 
-		return f, openFileResponse.Error
+		f := File{
+			fname,
+			c.clientId,
+			openFileResponse.FileData, // todo - is this necessary?
+			c.localPath,
+			c.rpcClient,
+			&c,
+			}
+
+		return f, err
 
 	} else {
 		// todo - need to do DREAD
@@ -162,18 +175,22 @@ func convertMode(mode FileMode) shared.FileMode {
 	}
 }
 
-func (c DFSConnection) OpenReadMode(fname string) (f DFSFile, err error) {
-	// Check for connection
-	return nil, nil
-
-}
-
-func (c DFSConnection) OpenWriteMode(fname string) (f DFSFile, err error) {
-	// Check for connection
-	return nil, nil
-
-}
-func (c DFSConnection) OpenDReadMode(fname string) (f DFSFile, err error) {
-	return nil, nil
-
+// Create a file on disk filled with zeros.
+func (c *DFSConnection) createLocalEmptyFile(fname string) {
+	filePath := c.localPath + fname + shared.FileExtension
+	_, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
+		f, err := os.Create(filePath)
+		if err != nil {
+			log.Printf("Problem creating file %s\n", fname)
+		}
+		emptyArr := make([]byte, shared.BytesPerChunk * shared.ChunksPerFile)
+		_, err = f.WriteAt(emptyArr, 0)
+		if err != nil {
+			log.Printf("Problem writing to file %s\n", fname)
+		}
+		f.Close()
+	} else {
+		log.Printf("Problem creating file %s - file already exists at %s\n", fname, c.localPath)
+	}
 }

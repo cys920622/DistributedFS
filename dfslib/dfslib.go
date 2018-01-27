@@ -206,6 +206,7 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 		localTCPAddr,
 		localPath,
 		nil,
+		DREAD, // todo - is this right???
 		}
 	networkErr := conn.Connect()
 	if err == nil && networkErr != nil {err = networkErr}

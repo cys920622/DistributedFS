@@ -16,6 +16,8 @@ import "./dfslib"
 import "fmt"
 import "os"
 
+const FileName = "helloworld"
+
 func main() {
 	serverAddr := "127.0.0.1:8081"
 	localIP := "127.0.0.1"
@@ -32,7 +34,7 @@ func main() {
 	defer dfs.UMountDFS()
 
 	// Check if hello.txt file exists in the global DFS.
-	exists, err := dfs.GlobalFileExists("helloworld")
+	exists, err := dfs.GlobalFileExists(FileName)
 	if checkError(err) != nil {
 		return
 	}
@@ -43,7 +45,7 @@ func main() {
 	}
 
 	// Open the file (and create it if it does not exist) for writing.
-	f, err := dfs.Open("helloworld", dfslib.WRITE)
+	f, err := dfs.Open(FileName, dfslib.WRITE)
 	if checkError(err) != nil {
 		return
 	}
