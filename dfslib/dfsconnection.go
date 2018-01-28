@@ -5,10 +5,10 @@ import (
 	"regexp"
 	"os"
 	"net/rpc"
-	"fmt"
 	"../shared"
 	"time"
 	"log"
+	"strconv"
 )
 
 // todo - remove
@@ -40,7 +40,7 @@ func (c DFSConnection) GlobalFileExists(fname string) (exists bool, err error) {
 	args := shared.FileExistsRequest{Filename: fname}
 	var fileExistsReply bool
 	err = c.rpcClient.Call("Server.CheckFileExists", args, &fileExistsReply)
-	fmt.Println(fileExistsReply)
+	log.Println(fileExistsReply)
 	return fileExistsReply, nil
 }
 
@@ -102,15 +102,25 @@ func (c DFSConnection) UMountDFS() (err error) {
 // Returns an error if there was an issue connecting the server.
 func (c *DFSConnection) Connect() error {
 	server, err := rpc.Dial("tcp", c.serverAddr.String())
-	if err != nil {return err}
+	if err != nil {
+		log.Println("Error connecting to server")
+		return err
+	}
 
-	args := shared.ClientRegistrationInfo{
+	freePortNum := getFreeLocalPort(c.localAddr.IP.String())
+	rpcReceivingAddr := c.localAddr.IP.String() + ":" + strconv.Itoa(freePortNum)
+
+	// Establish bi-directional RPC connection
+	go c.acceptServerRPC(rpcReceivingAddr)
+
+	args := shared.ClientRegistrationRequest{
 		ClientId: c.clientId,
-		ClientAddress: c.localAddr.String(),
+		ClientAddress: rpcReceivingAddr,
 		LatestHeartbeat: time.Now().UTC(),
 		}
 
 	var cid int
+
 	err = server.Call("Server.RegisterClient", args, &cid)
 	if cid == shared.UnsetClientId || err != nil {return err}
 
@@ -122,6 +132,23 @@ func (c *DFSConnection) Connect() error {
 	go c.sendHeartbeat()
 
 	return nil
+}
+
+
+// acceptServerRPC listens for RPC calls from server
+func (c *DFSConnection) acceptServerRPC(addr string) error {
+	a, e :=net.ResolveTCPAddr("tcp", addr)
+	if e != nil {return e}
+	tcpListener, err := net.ListenTCP("tcp", a)
+	if err == nil {
+		log.Printf("Listening for server RPC calls at client address [%s]\n", addr)
+		rpc.Accept(tcpListener)
+	} else {
+		log.Println("Failed to start server")
+		log.Println(err)
+	}
+
+	return err
 }
 
 func (c *DFSConnection) sendHeartbeat() {
@@ -136,15 +163,16 @@ func (c *DFSConnection) isConnected() bool {
 	return c.PingServer() > 0
 }
 
+// PingServer sends heartbeats to the server to keep the connection alive
 func (c *DFSConnection) PingServer() int {
 	args := shared.ClientHeartbeat{ClientId: c.clientId, Timestamp: time.Now().UTC()}
 	var pingReply int
 	err := c.rpcClient.Call("Server.PingServer", args, &pingReply)
 	if err != nil {
 		// todo - remove, or keep state
-		fmt.Println("Server stopped responding")
+		log.Println("Server stopped responding")
 	} else if pingReply != c.clientId {
-		fmt.Printf("Unexpected response '%d' from server for client %d", pingReply, c.clientId)
+		log.Printf("Unexpected response '%d' from server for client %d", pingReply, c.clientId)
 	}
 	return pingReply
 }

@@ -85,9 +85,9 @@ func (f File) getFilePath() string {
 
 // Convert dfslib.Chunk into a type shareable between server and client
 func convertChunkToChunk(chunk *Chunk) shared.Chunk {
-	var c shared.Chunk
-	copy(c[:], chunk[:])
-	return c
+	var d [32]byte
+	copy(d[:], chunk[:])
+	return shared.Chunk{Data: d}
 
 }
 

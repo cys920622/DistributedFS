@@ -14,6 +14,7 @@ import (
 	"net"
 	"log"
 	"../shared"
+	"strconv"
 )
 
 // A Chunk is the unit of reading/writing in DFS.
@@ -194,10 +195,9 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 	serverTCPAddr, e := net.ResolveTCPAddr("tcp", serverAddr)
 	if e != nil {err = e}
 
-	//todo - hardcoded
-	localPort := ":18081"
+	tcpAddr := localIP + ":" + strconv.Itoa(getFreeLocalPort(localIP))
 
-	localTCPAddr, e := net.ResolveTCPAddr("tcp", localIP + localPort)
+	localTCPAddr, e := net.ResolveTCPAddr("tcp", tcpAddr)
 	if e != nil {err = e}
 
 	conn := DFSConnection{
@@ -226,4 +226,12 @@ func CheckLocalPath(localPath string) error {
 		log.Println("Bad local path")
 		return LocalPathError(localPath)
 	}
+}
+
+// Find free local port number
+func getFreeLocalPort(localIP string) int {
+	I, _ := net.Listen("tcp", localIP + ":0")
+	I.Close()
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", I.Addr().String())
+	return tcpAddr.Port
 }

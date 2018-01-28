@@ -13,6 +13,22 @@ import (
 const ClientTimeoutThreshold = 2.5
 const ClientMonitorPeriod = 2
 const FirstClientId = 1
+const FirstChunkVer = 0
+
+// Contains filename.
+type AllChunksOfflineError uint8
+
+
+type ClientRegistrationInfo struct {
+	ClientId int
+	ClientAddress string
+	LatestHeartbeat time.Time
+	RPCConnection *rpc.Client
+}
+
+func (e AllChunksOfflineError) Error() string {
+	return fmt.Sprintf("All clients are offline for chunk [%d]\n", e)
+}
 
 type ChunkInfo struct {
 	CurrentVersion int
@@ -28,7 +44,7 @@ type FileInfo struct {
 	LockHolder int
 }
 type Server struct {
-	ConnectedClients, DisconnectedClients map[int]*shared.ClientRegistrationInfo
+	ConnectedClients, DisconnectedClients map[int]*ClientRegistrationInfo
 	Files map[string]*FileInfo
 	NextClientId int
 }
@@ -39,8 +55,8 @@ func main() {
 	clientIncomingAddr := os.Args[1]
 
 	server := &Server{
-		make(map[int]*shared.ClientRegistrationInfo),
-		make(map[int]*shared.ClientRegistrationInfo),
+		make(map[int]*ClientRegistrationInfo),
+		make(map[int]*ClientRegistrationInfo),
 		make(map[string]*FileInfo),
 		FirstClientId,
 	}
@@ -67,28 +83,54 @@ func main() {
 // Adds clients to the connected clients list.
 // When a new client connects, assign a unique ClientID.
 // Restore client metadata if one reconnects.
-func (s *Server) RegisterClient(args *shared.ClientRegistrationInfo, reply *int) error {
+func (s *Server) RegisterClient(args *shared.ClientRegistrationRequest, reply *int) error {
+	var assignedClientId int
 
 	if args.ClientId == -1 {
 		// Case: new client
-		s.ConnectedClients[s.NextClientId] = args
+		s.ConnectedClients[s.NextClientId] = &ClientRegistrationInfo{
+			ClientId:        args.ClientId,
+			ClientAddress:   args.ClientAddress,
+			LatestHeartbeat: args.LatestHeartbeat,
+		}
 		s.NextClientId = s.NextClientId + 1
+		assignedClientId = s.NextClientId - 1
 		*reply = s.NextClientId - 1
 	} else {
 		// Case: reconnecting client
 		// remove from DisconnectedClients and add to ConnectedClients
-		s.ConnectedClients[args.ClientId] = args
+		s.ConnectedClients[args.ClientId] = &ClientRegistrationInfo{
+			ClientId:        args.ClientId,
+			ClientAddress:   args.ClientAddress,
+			LatestHeartbeat: args.LatestHeartbeat,
+		}
 		delete(s.DisconnectedClients, args.ClientId)
+		assignedClientId = args.ClientId
 		*reply = args.ClientId
 	}
 
-	log.Printf("Client %d connected\n", *reply)
-	// todo - establish bidirectional RPC connection
+	err := s.establishRPCConnection(assignedClientId)
+	if err != nil {return err}
 
 	return nil
 }
 
-// RPC call target
+func (s *Server) establishRPCConnection(clientId int) error {
+	addr := s.ConnectedClients[clientId].ClientAddress
+	client, err := rpc.Dial("tcp", addr)
+	if err != nil {
+		log.Printf("Error establishing RPC connection to [%s]\n", addr)
+		return err
+	} else {
+		log.Printf("Established RPC connection to client [%d] at [%s]\n", clientId, addr)
+	}
+
+	s.ConnectedClients[clientId].RPCConnection = client
+	return nil
+}
+
+// RPC call target. Checks if a file by some name has ever been created.
+// Does not care if any or all of that file is offline.
 func (s *Server) CheckFileExists(args *shared.FileExistsRequest, reply *bool) error {
 	log.Printf("CheckFileExists: %s\n", args.Filename)
 	*reply = s.doesFileExist(args.Filename)
@@ -102,7 +144,8 @@ func (s *Server) doesFileExist(filename string) bool {
 	return exists
 }
 
-// todo - document, rename function?
+// PingServer is called remotely (RPC) by each connected client periodically
+// to tell the server that its connection is being maintained.
 func (s *Server) PingServer(args *shared.ClientHeartbeat, reply *int) error {
 	s.ConnectedClients[args.ClientId].LatestHeartbeat = args.Timestamp
 	*reply = args.ClientId
@@ -112,6 +155,10 @@ func (s *Server) PingServer(args *shared.ClientHeartbeat, reply *int) error {
 
 // todo - document
 // todo - should return array of bytes
+// OpenFile is an RPC target. If the mode is WRITE, if the file lock is available, it is
+// assigned to the calling client. If the file is already locked, the file is not opened.
+// Upon opening a file, it returns chunks of the file that are most recent AND online
+// (best effort) without guarantee that they are the most recent versions.
 func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileResponse) error {
 	if !s.doesFileExist(req.Filename) {
 		// Filename has never been seen by server. Create new file.
@@ -144,6 +191,7 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 	}
 }
 
+// todo - add client to owners for that chunk
 func (s *Server) GetLatestChunk(args *shared.GetLatestChunkRequest, reply *shared.GetLatestChunkResponse) error {
 
 	// todo - implement
@@ -152,7 +200,30 @@ func (s *Server) GetLatestChunk(args *shared.GetLatestChunkRequest, reply *share
 	return nil
 }
 
+func (s *Server) getChunkBestEffort(filename string, chunkNum uint8) (chunk shared.Chunk, err error) {
+	chunkInfo, exists := s.Files[filename].ChunkInfo[chunkNum]
 
+	// If chunk has never been written, return empty data
+	if !exists {return shared.Chunk{}, nil}
+
+	// Find online client with the latest version reachable
+	for ver := chunkInfo.CurrentVersion; ver >= FirstChunkVer; ver-- {
+		versionOwners := chunkInfo.ChunkOwners[ver]
+		for owner := range versionOwners {
+			if s.isClientConnected(owner) {
+				// todo - fetch chunk from owner
+				// todo - placeholder
+				return shared.Chunk{}, nil
+			}
+		}
+	}
+
+	// All owners are offline for every version
+	return shared.Chunk{}, AllChunksOfflineError(chunkNum)
+}
+
+
+// WriteChunk records a Write event in the file's metadata.
 // Assumes that the writer has the write lock.
 func (s *Server) WriteChunk(args *shared.WriteChunkRequest, reply *shared.WriteChunkResponse) error {
 	// Add client as newest chunk version owner and increment chunk version
@@ -161,7 +232,7 @@ func (s *Server) WriteChunk(args *shared.WriteChunkRequest, reply *shared.WriteC
 		// Chunk has never been written to
 		owners := make(map[int][]int)
 		owners[0] = make([]int, args.ClientId)
-		fileInfo.ChunkInfo[args.ChunkNum] = &ChunkInfo{0, owners}
+		fileInfo.ChunkInfo[args.ChunkNum] = &ChunkInfo{FirstChunkVer, owners}
 	} else {
 		nv := fileInfo.ChunkInfo[args.ChunkNum].CurrentVersion + 1
 		fileInfo.ChunkInfo[args.ChunkNum].CurrentVersion = nv
@@ -217,6 +288,11 @@ func (s *Server) unlockByClientId(clientId int) {
 			fmt.Printf("Unlocked %s\n", fn)
 			}
 	}
+}
+
+func (s *Server) isClientConnected(clientId int) bool {
+	_, exists := s.ConnectedClients[clientId]
+	return exists
 }
 
 func (s *Server) isFileLockAvailable(filename string, clientId int) bool {

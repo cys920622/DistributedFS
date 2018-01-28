@@ -10,8 +10,10 @@ const ChunksPerFile = 256
 const BytesPerChunk = 32
 
 type FileMode int
-type Chunk [32]byte
 
+type Chunk struct {
+	Data [32]byte
+}
 const (
 	// Read mode.
 	READ FileMode = iota
@@ -27,7 +29,7 @@ type FileExistsRequest struct {
 	Filename string
 }
 
-type ClientRegistrationInfo struct {
+type ClientRegistrationRequest struct {
 	ClientId int
 	ClientAddress string
 	LatestHeartbeat time.Time
