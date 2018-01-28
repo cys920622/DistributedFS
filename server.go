@@ -192,7 +192,7 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 			return nil
 		}
 
-		// Fetch chunk that is online with newest version
+		// Best-effort file fetch from online clients
 		var chunks []shared.Chunk
 		for chunkNum := 0; chunkNum < shared.ChunksPerFile; chunkNum++ {
 			_, exists := fileInfo.ChunkInfo[uint8(chunkNum)]
@@ -210,15 +210,39 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 		}
 
 		*reply = shared.OpenFileResponse{Chunks: chunks, Success: true}
+
+		// For each chunk fetched, the client is now included as an owner
+		for _, ci := range chunks {
+			fileInfo.ChunkInfo[ci.ChunkNum].ChunkOwners[ci.Version] =
+				append(fileInfo.ChunkInfo[ci.ChunkNum].ChunkOwners[ci.Version], req.ClientId)
+		}
 		return nil
 	}
 }
 
 // todo - add client to owners for that chunk
-func (s *Server) GetLatestChunk(args *shared.GetLatestChunkRequest, reply *shared.GetLatestChunkResponse) error {
-	// todo - implement
+// ReadChunk: in READ or WRITE mode, fetches the newest version of the chunk or returns an error.
+// In DREAD mode, returns the 'best effort' version of the chunk.
+func (s *Server) ReadChunk(req *shared.GetLatestChunkRequest, resp *shared.GetLatestChunkResponse) error {
+	if req.Mode == shared.DREAD {
+		log.Println("DREAD Read is currently unsupported")
+		*resp = shared.GetLatestChunkResponse{Success: false}
+		return nil
+	}
 
-	time.Sleep(1 * time.Minute)
+	fileInfo := s.Files[req.Filename]
+	currentVersion := fileInfo.ChunkInfo[req.ChunkNum].CurrentVersion
+	chunk, e := s.getChunkByVersion(req.Filename, req.ChunkNum, currentVersion)
+
+	if e != nil {
+		log.Printf("Error: all owners offline for file [%s], chunk [%d]\n", req.Filename, req.ChunkNum)
+		*resp = shared.GetLatestChunkResponse{Success: false}
+	} else {
+		*resp = shared.GetLatestChunkResponse{ChunkData: chunk, Success: true}
+		// Add client to owners
+		fileInfo.ChunkInfo[chunk.ChunkNum].ChunkOwners[chunk.Version] =
+			append(fileInfo.ChunkInfo[chunk.ChunkNum].ChunkOwners[chunk.Version], req.ClientId)
+	}
 	return nil
 }
 
@@ -230,27 +254,37 @@ func (s *Server) getChunkBestEffort(filename string, chunkNum uint8) (chunk shar
 
 	// Find online client with the latest version reachable
 	for ver := chunkInfo.CurrentVersion; ver >= FirstChunkVer; ver-- {
-		versionOwners := chunkInfo.ChunkOwners[ver]
-		for _, owner := range versionOwners {
-			if s.isClientConnected(owner) {
-				log.Printf("Fetch: owner ClientId: [%d], Filename [%s], Chunk [%d], Ver: [%d]\n",
-					owner, filename, chunkNum, ver)
-				req := shared.FetchChunkRequest{
-					Filename: filename,
-					ChunkNum: chunkNum,
-				}
-				var resp shared.FetchChunkResponse
-				err = s.ConnectedClients[owner].RPCConnection.Call("DiskService.FetchChunk", req, &resp)
-				if err != nil {
-					log.Print(err)
-				}
-
-				return resp.ChunkData, nil
-			}
-		}
+		chunk, e := s.getChunkByVersion(filename, chunkNum, ver)
+		if e == nil {return chunk, nil}
 	}
 	log.Printf("Error: all owners offline for file [%s], chunk [%d]\n", filename, chunkNum)
 	// All owners are offline for every version
+	return shared.Chunk{}, AllChunksOfflineError(chunkNum)
+}
+
+func (s *Server) getChunkByVersion(filename string, chunkNum uint8, ver int) (chunk shared.Chunk, err error) {
+	chunkInfo := s.Files[filename].ChunkInfo[chunkNum]
+
+	versionOwners := chunkInfo.ChunkOwners[ver]
+	for _, owner := range versionOwners {
+		if s.isClientConnected(owner) {
+			log.Printf("Fetch: owner ClientId: [%d], Filename [%s], Chunk [%d], Ver: [%d]\n",
+				owner, filename, chunkNum, ver)
+			req := shared.FetchChunkRequest{
+				Filename: filename,
+				ChunkNum: chunkNum,
+			}
+			var resp shared.FetchChunkResponse
+			err = s.ConnectedClients[owner].RPCConnection.Call("DiskService.FetchChunk", req, &resp)
+			if err != nil {
+				log.Print(err)
+			}
+
+			resp.ChunkData.Version = ver
+			return resp.ChunkData, nil
+		}
+	}
+
 	return shared.Chunk{}, AllChunksOfflineError(chunkNum)
 }
 

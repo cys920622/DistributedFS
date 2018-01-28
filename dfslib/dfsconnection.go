@@ -208,7 +208,8 @@ func convertMode(mode FileMode) shared.FileMode {
 	}
 }
 
-// Create a file on disk filled with zeros.
+// Create a file on disk filled with zeros, if a file does not exist already.
+// Does nothing if the file already exists.
 func (c *DFSConnection) createLocalEmptyFile(filename string) {
 	filePath := getFilePath(c.localPath, filename)
 	_, err := os.Stat(filePath)
@@ -223,8 +224,6 @@ func (c *DFSConnection) createLocalEmptyFile(filename string) {
 			log.Printf("Error: cannot write to file %s\n", filename)
 		}
 		f.Close()
-	} else {
-		log.Printf("Error: file already exists at %s\n", c.localPath)
 	}
 }
 

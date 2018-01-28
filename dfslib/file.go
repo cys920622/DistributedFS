@@ -26,13 +26,31 @@ type File struct {
 func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
 	if f.c.currentMode == DREAD {
 		// todo - implement
+		// todo - chunk is never unavailable in DREAD mode
 		return nil
 	} else {
 		if !f.c.isConnected() {return DisconnectedError(f.c.serverAddr.String())}
 
 		// todo - implement
+		req := shared.GetLatestChunkRequest{
+			ClientId: f.c.clientId,
+			Filename: f.filename,
+			ChunkNum: chunkNum,
+			Mode: convertMode(f.c.currentMode),
+		}
 
-		return nil
+		var resp shared.GetLatestChunkResponse
+		err = f.c.rpcClient.Call("Server.ReadChunk", req, &resp)
+		if err != nil {return err}
+
+		if !resp.Success {
+			log.Printf("Chunk [%d] of file [%s] is unavailable\n", chunkNum, f.filename)
+			return ChunkUnavailableError(chunkNum)
+		}
+
+		c := []shared.Chunk{resp.ChunkData}
+		err = WriteChunksToDisk(c, f.getFilePath())
+		return err
 	}
 }
 

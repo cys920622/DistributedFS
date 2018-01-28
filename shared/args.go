@@ -13,6 +13,7 @@ type FileMode int
 
 type Chunk struct {
 	ChunkNum uint8
+	Version int
 	Data [32]byte
 }
 const (
@@ -63,7 +64,7 @@ type GetLatestChunkRequest struct {
 
 type GetLatestChunkResponse struct {
 	ChunkData Chunk
-	Error error
+	Success bool
 }
 
 type WriteChunkRequest struct {
