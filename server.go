@@ -8,12 +8,14 @@ import (
 	"./shared"
 	"time"
 	"log"
+	"io/ioutil"
 )
 
 const ClientTimeoutThreshold = 2.5
 const ClientMonitorPeriod = 2
 const FirstClientId = 1
 const FirstChunkVer = 0
+const LoggingOn = true
 
 // Contains filename.
 type AllChunksOfflineError uint8
@@ -52,6 +54,10 @@ type Server struct {
 
 
 func main() {
+	if !LoggingOn {
+		log.SetOutput(ioutil.Discard)
+	}
+
 	clientIncomingAddr := os.Args[1]
 
 	server := &Server{
@@ -153,47 +159,63 @@ func (s *Server) PingServer(args *shared.ClientHeartbeat, reply *int) error {
 }
 
 
-// todo - document
-// todo - should return array of bytes
 // OpenFile is an RPC target. If the mode is WRITE, if the file lock is available, it is
 // assigned to the calling client. If the file is already locked, the file is not opened.
 // Upon opening a file, it returns chunks of the file that are most recent AND online
 // (best effort) without guarantee that they are the most recent versions.
 func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileResponse) error {
+	log.Printf("Open: client [%d], file [%s]", req.ClientId, req.Filename)
+
 	if !s.doesFileExist(req.Filename) {
 		// Filename has never been seen by server. Create new file.
 		s.createNewFile(req)
-		*reply = shared.OpenFileResponse{FileData: nil, Success: true}
+		*reply = shared.OpenFileResponse{Chunks: nil, Success: true}
 		return nil
 	} else {
 		if req.Mode == shared.WRITE {
 			if !s.isFileLockAvailable(req.Filename, req.ClientId) {
 				// Write access conflict occurs
-				log.Printf("Write conflict: %s\n", req.Filename)
-				*reply = shared.OpenFileResponse{FileData: nil, Success: false}
+				log.Printf("Error: Write conflict for file [%s]\n", req.Filename)
+				*reply = shared.OpenFileResponse{
+					Chunks: nil, Success: false, ConflictError: true, UnavailableError: false,
+				}
 				return nil
 			} else {
 				s.Files[req.Filename].LockHolder = req.ClientId
 			}
 		}
+
 		fileInfo := s.Files[req.Filename]
 		if len(fileInfo.ChunkInfo) == 0 {
 			// File exists but it was never written to
-			*reply = shared.OpenFileResponse{FileData: nil, Success: true}
+			*reply = shared.OpenFileResponse{Success: true}
 			return nil
-		} else {
-			// File is registered and has been written to
-			// todo - get latest chunks that are reachable
-			*reply = shared.OpenFileResponse{FileData: nil, Success: true}
-			return nil
-
 		}
+
+		// Fetch chunk that is online with newest version
+		var chunks []shared.Chunk
+		for chunkNum := 0; chunkNum < shared.ChunksPerFile; chunkNum++ {
+			_, exists := fileInfo.ChunkInfo[uint8(chunkNum)]
+			if exists {
+				chunk, err := s.getChunkBestEffort(req.Filename, uint8(chunkNum))
+				if err != nil {
+					log.Printf("Error: couldn't fetch file [%s] chunkNum [%d]\n", req.Filename, chunkNum)
+					*reply = shared.OpenFileResponse{
+						Chunks: nil, Success: false, ConflictError: false, UnavailableError: true,
+					}
+					return err
+				}
+				chunks = append(chunks, chunk)
+			}
+		}
+
+		*reply = shared.OpenFileResponse{Chunks: chunks, Success: true}
+		return nil
 	}
 }
 
 // todo - add client to owners for that chunk
 func (s *Server) GetLatestChunk(args *shared.GetLatestChunkRequest, reply *shared.GetLatestChunkResponse) error {
-
 	// todo - implement
 
 	time.Sleep(1 * time.Minute)
@@ -209,15 +231,25 @@ func (s *Server) getChunkBestEffort(filename string, chunkNum uint8) (chunk shar
 	// Find online client with the latest version reachable
 	for ver := chunkInfo.CurrentVersion; ver >= FirstChunkVer; ver-- {
 		versionOwners := chunkInfo.ChunkOwners[ver]
-		for owner := range versionOwners {
+		for _, owner := range versionOwners {
 			if s.isClientConnected(owner) {
-				// todo - fetch chunk from owner
-				// todo - placeholder
-				return shared.Chunk{}, nil
+				log.Printf("Fetch: owner ClientId: [%d], Filename [%s], Chunk [%d], Ver: [%d]\n",
+					owner, filename, chunkNum, ver)
+				req := shared.FetchChunkRequest{
+					Filename: filename,
+					ChunkNum: chunkNum,
+				}
+				var resp shared.FetchChunkResponse
+				err = s.ConnectedClients[owner].RPCConnection.Call("DiskService.FetchChunk", req, &resp)
+				if err != nil {
+					log.Print(err)
+				}
+
+				return resp.ChunkData, nil
 			}
 		}
 	}
-
+	log.Printf("Error: all owners offline for file [%s], chunk [%d]\n", filename, chunkNum)
 	// All owners are offline for every version
 	return shared.Chunk{}, AllChunksOfflineError(chunkNum)
 }
@@ -231,16 +263,16 @@ func (s *Server) WriteChunk(args *shared.WriteChunkRequest, reply *shared.WriteC
 	if fileInfo.ChunkInfo[args.ChunkNum] == nil {
 		// Chunk has never been written to
 		owners := make(map[int][]int)
-		owners[0] = make([]int, args.ClientId)
+		owners[0] = []int{args.ClientId}
 		fileInfo.ChunkInfo[args.ChunkNum] = &ChunkInfo{FirstChunkVer, owners}
 	} else {
 		nv := fileInfo.ChunkInfo[args.ChunkNum].CurrentVersion + 1
 		fileInfo.ChunkInfo[args.ChunkNum].CurrentVersion = nv
-		fileInfo.ChunkInfo[args.ChunkNum].ChunkOwners[nv] = make([]int, args.ClientId)
+		fileInfo.ChunkInfo[args.ChunkNum].ChunkOwners[nv] = []int{args.ClientId}
 	}
 
-	log.Printf("Write: ClientId: %d, Filename %s, Ver: %d\n",
-		args.ClientId, args.Filename, fileInfo.ChunkInfo[args.ChunkNum].CurrentVersion)
+	log.Printf("Write: ClientId: [%d], Filename [%s], Chunk [%d], Ver: [%d]\n",
+		args.ClientId, args.Filename, args.ChunkNum, fileInfo.ChunkInfo[args.ChunkNum].CurrentVersion)
 
 	*reply = shared.WriteChunkResponse{Success: true}
 
@@ -285,7 +317,7 @@ func (s *Server) unlockByClientId(clientId int) {
 	for fn, fi := range s.Files {
 		if fi.LockHolder == clientId {
 			fi.LockHolder = shared.UnsetClientId
-			fmt.Printf("Unlocked %s\n", fn)
+			log.Printf("Unlocked %s\n", fn)
 			}
 	}
 }

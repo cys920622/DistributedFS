@@ -4,13 +4,14 @@ import "net/rpc"
 import (
 	"../shared"
 	"os"
+	"log"
 )
 
 // todo - clean up this struct, most stuff is in c already
 type File struct {
 	filename string
 	clientId int
-	data []byte
+	data []shared.Chunk
 	localPath string
 	rpcClient *rpc.Client
 	c *DFSConnection
@@ -63,7 +64,16 @@ func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 	}
 	// Commit write locally
 	diskFile, err := os.OpenFile(f.getFilePath(), os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	if err != nil {
+		log.Printf("Error: cannot open file [%s]\n", f.filename)
+		return err
+	}
+
 	_, err = diskFile.WriteAt(chunk[:], getByteOffsetFromChunkNum(chunkNum))
+	if err != nil {
+		log.Printf("Error: cannot write to file [%s]\n", f.filename)
+		return err
+	}
 
 	diskFile.Sync()
 	diskFile.Close()
@@ -89,8 +99,4 @@ func convertChunkToChunk(chunk *Chunk) shared.Chunk {
 	copy(d[:], chunk[:])
 	return shared.Chunk{Data: d}
 
-}
-
-func getByteOffsetFromChunkNum(chunkNum uint8) int64 {
-	return int64(chunkNum) * int64(shared.BytesPerChunk)
 }

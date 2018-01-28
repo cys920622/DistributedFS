@@ -15,6 +15,7 @@ import (
 	"log"
 	"../shared"
 	"strconv"
+	"io/ioutil"
 )
 
 // A Chunk is the unit of reading/writing in DFS.
@@ -34,6 +35,7 @@ const (
 	DREAD
 )
 
+const LoggingOn = true
 const UnsetClientID = -1
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -188,6 +190,9 @@ type DFS interface {
 // - LocalPathError
 // - Networking errors related to localIP or serverAddr
 func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err error) {
+	if !LoggingOn {
+		log.SetOutput(ioutil.Discard)
+	}
 
 	e := CheckLocalPath(localPath)
 	if e != nil {return nil, e}

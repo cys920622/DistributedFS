@@ -52,33 +52,35 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 	if mode == READ || mode == WRITE {
 		if !c.isConnected() {return nil, DisconnectedError(c.serverAddr.String())}
 
-		openArgs := shared.OpenFileRequest{
+		openFileReq := shared.OpenFileRequest{
 			ClientId: c.clientId,
 			Filename: fname,
 			Mode:     convertMode(mode),
 		}
-		var openFileResponse shared.OpenFileResponse
-		err = c.rpcClient.Call("Server.OpenFile", openArgs, &openFileResponse)
+		var resp shared.OpenFileResponse
+		err = c.rpcClient.Call("Server.OpenFile", openFileReq, &resp)
 
 
-		if !openFileResponse.Success {
-			err = OpenWriteConflictError(fname)
+		if !resp.Success {
+			if resp.UnavailableError {
+				log.Printf("Error: File is unavailable: [%s]\n", fname)
+				err = FileUnavailableError(fname)
+			}
+			if resp.ConflictError {
+				log.Printf("Error: Write conflict: [%s]\n", fname)
+				err = OpenWriteConflictError(fname)
+			}
 			return nil, err
-			// todo - this might not be the only error possible
 		}
 
-		if openFileResponse.FileData == nil {
-			log.Printf("Creating file on disk: %s\n", fname)
-			c.createLocalEmptyFile(fname)
-		} else {
-			// File has been retrieved from server
-			// todo - download file from server
-		}
+		c.createLocalEmptyFile(fname) // todo - might need to do this in both cases and write over
+
+		WriteChunksToDisk(resp.Chunks, getFilePath(c.localPath, fname))
 
 		f := File{
 			fname,
 			c.clientId,
-			openFileResponse.FileData, // todo - is this necessary?
+			resp.Chunks, // todo - is this necessary?
 			c.localPath,
 			c.rpcClient,
 			&c,
@@ -137,6 +139,9 @@ func (c *DFSConnection) Connect() error {
 
 // acceptServerRPC listens for RPC calls from server
 func (c *DFSConnection) acceptServerRPC(addr string) error {
+	diskService := DiskService{c: *c}
+	rpc.Register(&diskService)
+
 	a, e :=net.ResolveTCPAddr("tcp", addr)
 	if e != nil {return e}
 	tcpListener, err := net.ListenTCP("tcp", a)
@@ -204,21 +209,30 @@ func convertMode(mode FileMode) shared.FileMode {
 }
 
 // Create a file on disk filled with zeros.
-func (c *DFSConnection) createLocalEmptyFile(fname string) {
-	filePath := c.localPath + fname + shared.FileExtension
+func (c *DFSConnection) createLocalEmptyFile(filename string) {
+	filePath := getFilePath(c.localPath, filename)
 	_, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
 		f, err := os.Create(filePath)
 		if err != nil {
-			log.Printf("Problem creating file %s\n", fname)
+			log.Printf("Error: cannot create file %s\n", filename)
 		}
 		emptyArr := make([]byte, shared.BytesPerChunk * shared.ChunksPerFile)
 		_, err = f.WriteAt(emptyArr, 0)
 		if err != nil {
-			log.Printf("Problem writing to file %s\n", fname)
+			log.Printf("Error: cannot write to file %s\n", filename)
 		}
 		f.Close()
 	} else {
-		log.Printf("Problem creating file %s - file already exists at %s\n", fname, c.localPath)
+		log.Printf("Error: file already exists at %s\n", c.localPath)
 	}
+}
+
+// Returns the absolute path for the file
+func getFilePath(localPath string, filename string) string {
+	return localPath + filename + shared.FileExtension
+}
+
+func getByteOffsetFromChunkNum(chunkNum uint8) int64 {
+	return int64(chunkNum) * int64(shared.BytesPerChunk)
 }

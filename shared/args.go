@@ -12,6 +12,7 @@ const BytesPerChunk = 32
 type FileMode int
 
 type Chunk struct {
+	ChunkNum uint8
 	Data [32]byte
 }
 const (
@@ -47,8 +48,10 @@ type OpenFileRequest struct {
 }
 
 type OpenFileResponse struct {
-	FileData []byte
+	Chunks []Chunk
 	Success bool
+	ConflictError bool
+	UnavailableError bool
 }
 
 type GetLatestChunkRequest struct {
@@ -72,4 +75,13 @@ type WriteChunkRequest struct {
 
 type WriteChunkResponse struct {
 	Success bool
+}
+
+type FetchChunkRequest struct {
+	Filename string
+	ChunkNum uint8
+}
+
+type FetchChunkResponse struct {
+	ChunkData Chunk
 }
