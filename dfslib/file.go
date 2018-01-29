@@ -22,21 +22,44 @@ type File struct {
 // - DisconnectedError (in READ,WRITE modes)
 // - ChunkUnavailableError (in READ,WRITE modes)
 func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
+	var resp shared.GetLatestChunkResponse
+	req := shared.GetLatestChunkRequest{
+		ClientId: f.c.clientId,
+		Filename: f.filename,
+		ChunkNum: chunkNum,
+		Mode: convertMode(f.c.currentMode),
+	}
+
 	if f.c.currentMode == DREAD {
 		// todo - implement
 		// todo - chunk is never unavailable in DREAD mode
+		chunkRetrieved := false
+
+		if f.c.isConnected() {
+			// Get best-effort version of chunk
+			err = f.c.rpcClient.Call("Server.ReadChunk", req, &resp)
+			if err == nil && resp.Success {
+				copy(chunk[:], resp.ChunkData.Data[:])
+				chunkRetrieved = true
+
+				c := []shared.Chunk{resp.ChunkData}
+				err = WriteChunksToDisk(c, f.getFilePath())
+				if err != nil {return err}
+				return nil
+			}
+		}
+
+		if !chunkRetrieved {
+			// Retrieve chunk from disk
+			chunkFromDisk, err := ReadChunkFromDisk(f.getFilePath(), chunkNum)
+			if err != nil {log.Println(err)}
+			copy(chunk[:], chunkFromDisk.Data[:])
+			return nil
+		}
 		return nil
 	} else {
 		if !f.isOpen || !f.c.isConnected() {return DisconnectedError(f.c.serverAddr.String())}
 
-		req := shared.GetLatestChunkRequest{
-			ClientId: f.c.clientId,
-			Filename: f.filename,
-			ChunkNum: chunkNum,
-			Mode: convertMode(f.c.currentMode),
-		}
-
-		var resp shared.GetLatestChunkResponse
 		err = f.c.rpcClient.Call("Server.ReadChunk", req, &resp)
 		if err != nil {return err}
 

@@ -19,17 +19,20 @@ const LoggingOn = true
 
 // Contains filename.
 type AllChunksOfflineError uint8
+func (e AllChunksOfflineError) Error() string {
+	return fmt.Sprintf("All clients are offline for chunk [%d]\n", e)
+}
 
+type ChunkIsTrivialError uint8
+func (e ChunkIsTrivialError) Error() string {
+	return fmt.Sprintf("Chunk [%d] has never been written to\n", e)
+}
 
 type ClientRegistrationInfo struct {
 	ClientId int
 	ClientAddress string
 	LatestHeartbeat time.Time
 	RPCConnection *rpc.Client
-}
-
-func (e AllChunksOfflineError) Error() string {
-	return fmt.Sprintf("All clients are offline for chunk [%d]\n", e)
 }
 
 type ChunkInfo struct {
@@ -60,13 +63,14 @@ func main() {
 
 	clientIncomingAddr := os.Args[1]
 
+	newServer := rpc.NewServer()
 	server := &Server{
 		make(map[int]*ClientRegistrationInfo),
 		make(map[int]*ClientRegistrationInfo),
 		make(map[string]*FileInfo),
 		FirstClientId,
 	}
-	rpc.Register(server)
+	newServer.Register(server)
 
 	addr, err := net.ResolveTCPAddr("tcp", clientIncomingAddr)
 	if err != nil {
@@ -77,13 +81,21 @@ func main() {
 	tcpListener, err := net.ListenTCP("tcp", addr)
 
 	if err == nil {
-		fmt.Println("Accepting clients at " + addr.String())
-		go server.monitorClientConnections()
-		rpc.Accept(tcpListener)
+		log.Printf("Accepting clients at [%s]\n", addr)
+		for {
+			conn, err := tcpListener.Accept()
+			if err != nil {
+				log.Printf("Error: failed to start server at [%s]\n", addr)
+				return
+			}
+			log.Printf("Client at [%s] accepted connection from [%s]", addr, conn.RemoteAddr())
+			go newServer.ServeConn(conn)
+		}
 	} else {
-		fmt.Println("Failed to start server")
+		log.Println("Failed to start server")
 		log.Println(err)
 	}
+
 }
 
 // Adds clients to the connected clients list.
@@ -209,7 +221,11 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 			_, exists := fileInfo.ChunkInfo[uint8(chunkNum)]
 			if exists {
 				chunk, err := s.getChunkBestEffort(req.Filename, uint8(chunkNum))
-				if err == nil {chunks = append(chunks, chunk)}
+				if err == nil {
+					chunks = append(chunks, chunk)
+				} else {
+					log.Println(err)
+				}
 			}
 		}
 
@@ -263,7 +279,13 @@ func (s *Server) ReadChunk(req *shared.GetLatestChunkRequest, resp *shared.GetLa
 		req.ClientId, req.Filename, req.ChunkNum)
 
 	if req.Mode == shared.DREAD {
-		log.Println("DREAD Read is currently unsupported")
+		// todo - implement
+		chunk, err := s.getChunkBestEffort(req.Filename, req.ChunkNum)
+		if err != nil {
+			*resp = shared.GetLatestChunkResponse{Success: false}
+		} else {
+			*resp = shared.GetLatestChunkResponse{ChunkData: chunk, Success: true}
+		}
 		*resp = shared.GetLatestChunkResponse{Success: false}
 		return nil
 	}
@@ -293,11 +315,13 @@ func (s *Server) ReadChunk(req *shared.GetLatestChunkRequest, resp *shared.GetLa
 	return nil
 }
 
+// Returns the latest reachable version of a chunk.
+// Returns an error if chunk has never been written, or all owners are offline.
 func (s *Server) getChunkBestEffort(filename string, chunkNum uint8) (chunk shared.Chunk, err error) {
 	chunkInfo, exists := s.Files[filename].ChunkInfo[chunkNum]
 
 	// If chunk has never been written, return empty data
-	if !exists {return shared.Chunk{}, nil}
+	if !exists {return shared.Chunk{}, ChunkIsTrivialError(chunkNum)}
 
 	// Find online client with the latest version reachable
 	for ver := chunkInfo.CurrentVersion; ver >= FirstChunkVer; ver-- {

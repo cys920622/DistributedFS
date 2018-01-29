@@ -14,7 +14,7 @@ import (
 const FileName131 = "131"
 
 
-func Test_1_3_1(serverAddr string) {
+func Test_1_3_1(serverAddr string, itwg *sync.WaitGroup) {
 	fmt.Println("[1.3.1]")
 	fmt.Println("One reader/writer client and one writer client")
 	fmt.Println("Client A creates file, client B checks file with GlobalFileExists")
@@ -55,6 +55,7 @@ func Test_1_3_1(serverAddr string) {
 	fmt.Printf("\nALL TESTS PASSED: Test_1_3_1\n\n")
 	CleanDir("clientA131")
 	CleanDir("clientB131")
+	itwg.Done()
 	return
 }
 

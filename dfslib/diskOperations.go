@@ -16,36 +16,45 @@ type DiskService struct {
 func (service *DiskService) FetchChunk(req *shared.FetchChunkRequest, reply *shared.FetchChunkResponse) error {
 	log.Printf("Server requested file [%s] chunk [%d]\n", req.Filename, req.ChunkNum)
 
-	diskFile, err := os.Open(getFilePath(service.c.localPath, req.Filename))
+	chunk, err := ReadChunkFromDisk(getFilePath(service.c.localPath, req.Filename), req.ChunkNum)
+
+	if err != nil {return err}
+
+	*reply = shared.FetchChunkResponse{ChunkData: chunk}
+	return nil
+}
+
+func ReadChunkFromDisk(filePath string, chunkNum uint8) (shared.Chunk, error) {
+	diskFile, err := os.Open(filePath)
 	if err != nil {
-		log.Printf("Error: cannot open file [%s]\n", req.Filename)
-		return err
+		log.Printf("Error: cannot open file [%s]\n", filePath)
+		return shared.Chunk{}, err
 	}
 
 	buffer := make([]byte, 32)
 
-	_, err = diskFile.Seek(getByteOffsetFromChunkNum(req.ChunkNum),0)
+	_, err = diskFile.Seek(getByteOffsetFromChunkNum(chunkNum),0)
 	if err != nil {
-		log.Printf("Error: cannot read file [%s]\n", req.Filename)
-		return err
+		log.Printf("Error: cannot read file [%s]\n", filePath)
+		return shared.Chunk{}, err
 	}
 
 	log.Printf("Disk read: file [%s], chunk [%d] (offset = %d bytes)\n",
-		req.Filename, req.ChunkNum, getByteOffsetFromChunkNum(req.ChunkNum))
+		filePath, chunkNum, getByteOffsetFromChunkNum(chunkNum))
 
 	_, err = diskFile.Read(buffer)
 
 	if err != nil {
-		log.Printf("Error: cannot read file [%s]\n", req.Filename)
-		return err
+		log.Printf("Error: cannot read file [%s]\n", filePath)
+		return shared.Chunk{}, err
 	}
 
 	diskFile.Close()
 	var d [32]byte
 	copy(d[:], buffer[:])
-	chunk := shared.Chunk{ChunkNum: req.ChunkNum, Data: d}
-	*reply = shared.FetchChunkResponse{ChunkData: chunk}
-	return nil
+	chunk := shared.Chunk{ChunkNum: chunkNum, Data: d}
+
+	return chunk, nil
 }
 
 func WriteChunksToDisk(chunks []shared.Chunk, filePath string) error {

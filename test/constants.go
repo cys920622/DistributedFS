@@ -15,6 +15,7 @@ const (
 	INVALID_FILE_NAME = "invalid file;"             // a file name that the dfslib rejects
 	DEADLINE          = "2018-01-29T23:59:59-08:00" // project deadline :-)
 	LocalIP 		  = "127.0.0.1" // you may want to change this when testing
+	ServerShutdownTimer = 6
 )
 
 //////////////////////////////////////////////////////////////////////

@@ -8,11 +8,12 @@ import (
 	"fmt"
 	"../dfslib"
 	"time"
+	"sync"
 )
 
 const FileName123 = "123"
 
-func Test_1_2_3(serverAddr string) {
+func Test_1_2_3(serverAddr string, wg *sync.WaitGroup) {
 	fmt.Println("[1.2.3]")
 	fmt.Println("One reader/writer client and one writer client")
 	fmt.Println("Client A writes file, client B reads same file and observes A's write")
@@ -41,6 +42,7 @@ func Test_1_2_3(serverAddr string) {
 		fmt.Printf("\nALL TESTS PASSED: Test_1_2_3\n\n")
 		CleanDir("clientA123")
 		CleanDir("clientB123")
+		wg.Done()
 		return
 	}
 

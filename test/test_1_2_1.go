@@ -7,12 +7,12 @@ import (
 	"io/ioutil"
 	"fmt"
 	"../dfslib"
-	"time"
+	"sync"
 )
 
 const FileName121 = "121"
 
-func Test_1_2_1(serverAddr string) {
+func Test_1_2_1(serverAddr string, wg *sync.WaitGroup) {
 	fmt.Println("[1.2.1]")
 	fmt.Println("One reader/writer client and one writer client")
 	fmt.Println("Both clients attempt to open same file for writing")
@@ -28,9 +28,17 @@ func Test_1_2_1(serverAddr string) {
 
 	errChannel := make(chan error)
 
-	go clientA_1_2_1(serverAddr, LocalIP, clientALocalPath, errChannel)
-	time.Sleep(500*time.Millisecond)
-	go clientB_1_2_1(serverAddr, LocalIP, clientBLocalPath, errChannel)
+	var writerAWait sync.WaitGroup
+	var writerBWait sync.WaitGroup
+
+	writerAWait.Add(1)
+	writerBWait.Add(1)
+
+	go clientA_1_2_1(serverAddr, LocalIP, clientALocalPath, errChannel, &writerAWait, &writerBWait)
+	writerAWait.Wait()
+
+	go clientB_1_2_1(serverAddr, LocalIP, clientBLocalPath, errChannel, &writerBWait)
+	writerBWait.Wait()
 
 	e := <- errChannel
 	if e != nil {
@@ -39,11 +47,12 @@ func Test_1_2_1(serverAddr string) {
 		fmt.Printf("\nALL TESTS PASSED: Test_1_2_1\n\n")
 		CleanDir("clientA121")
 		CleanDir("clientB121")
+		wg.Done()
 	}
 
 }
 
-func clientA_1_2_1(serverAddr, localIP, localPath string, rc chan <- error) (err error) {
+func clientA_1_2_1(serverAddr, localIP, localPath string, rc chan <- error, wg, next *sync.WaitGroup) (err error) {
 	var dfs dfslib.DFS
 
 	logger := NewLogger("(1.2.1) Client A")
@@ -88,9 +97,14 @@ func clientA_1_2_1(serverAddr, localIP, localPath string, rc chan <- error) (err
 	defer func() {
 		if err != nil {
 			rc <- err
-
+			wg.Done()
 			return
 		}
+
+		wg.Done()
+		fmt.Println("x")
+		next.Wait()
+		fmt.Println("y")
 
 		testCase := fmt.Sprintf("Closing file '%s'", FileName121)
 
@@ -106,12 +120,10 @@ func clientA_1_2_1(serverAddr, localIP, localPath string, rc chan <- error) (err
 
 	logger.TestResult(testCase, true)
 
-	time.Sleep(1500 * time.Millisecond)
-
 	return
 }
 
-func clientB_1_2_1(serverAddr, localIP, localPath string, rc chan <- error) (err error) {
+func clientB_1_2_1(serverAddr, localIP, localPath string, rc chan <- error, wg *sync.WaitGroup) (err error) {
 	var dfs dfslib.DFS
 
 	logger := NewLogger("(1.2.1) Client B")
@@ -135,6 +147,7 @@ func clientB_1_2_1(serverAddr, localIP, localPath string, rc chan <- error) (err
 
 		logger.TestResult("Unmounting DFS", true)
 
+		wg.Done()
 		rc <- nil
 	}()
 

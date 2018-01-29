@@ -12,7 +12,7 @@ import (
 
 const FileName132 = "132"
 
-func Test_1_3_2(serverAddr string) {
+func Test_1_3_2(serverAddr string, itwg *sync.WaitGroup) {
 	fmt.Println("[1.3.2]")
 	fmt.Println("One reader/writer client and one writer client")
 	fmt.Println("Client A writes file, client B reads same file and observes A's write")
@@ -52,6 +52,7 @@ func Test_1_3_2(serverAddr string) {
 	fmt.Printf("\nALL TESTS PASSED: Test_1_3_2\n\n")
 	CleanDir("clientA132")
 	CleanDir("clientB132")
+	itwg.Done()
 	return
 }
 
