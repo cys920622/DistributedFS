@@ -223,7 +223,6 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 }
 
 // CheckLocalPath returns an error if the directory cannot be created.
-// todo - don't create the directory, just check that it exists and throw err if not (@199)
 func CheckLocalPath(localPath string) error {
 	// Attempt to open existing directory
 	_, err := os.Stat(localPath)

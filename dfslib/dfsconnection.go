@@ -48,52 +48,57 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 
 	c.currentMode = mode
 
-	if mode == READ || mode == WRITE {
-		if !c.isConnected() {return nil, DisconnectedError(c.serverAddr.String())}
-
-		openFileReq := shared.OpenFileRequest{
-			ClientId: c.clientId,
-			Filename: fname,
-			Mode:     convertMode(mode),
+	if !c.isConnected() {
+		if mode == READ || mode == WRITE {
+			return nil, DisconnectedError(c.serverAddr.String())
+		} else {
+			exists, _ := c.LocalFileExists(fname)
+			if exists {
+				return File{fname, &c}, nil
+			} else {
+				return nil, FileDoesNotExistError(fname)
+			}
 		}
-		var resp shared.OpenFileResponse
-		err = c.rpcClient.Call("Server.OpenFile", openFileReq, &resp)
-
-
-		if !resp.Success {
-			if resp.UnavailableError {
-				log.Printf("Error: File is unavailable: [%s]\n", fname)
-				err = FileUnavailableError(fname)
-			}
-			if resp.ConflictError {
-				log.Printf("Error: Write conflict: [%s]\n", fname)
-				err = OpenWriteConflictError(fname)
-			}
-			return nil, err
-		}
-
-		c.createLocalEmptyFile(fname)
-
-		WriteChunksToDisk(resp.Chunks, getFilePath(c.localPath, fname))
-
-		f := File{
-			fname,
-			c.clientId,
-			resp.Chunks, // todo - is this necessary?
-			c.localPath,
-			c.rpcClient,
-			&c,
-			}
-
-		return f, err
-
-	} else {
-		// todo - need to do DREAD
-		return nil, nil
 	}
+
+	openFileReq := shared.OpenFileRequest{
+		ClientId: c.clientId,
+		Filename: fname,
+		Mode:     convertMode(mode),
+	}
+	var resp shared.OpenFileResponse
+	err = c.rpcClient.Call("Server.OpenFile", openFileReq, &resp)
+
+	if err != nil {
+		if mode == READ || mode == WRITE {
+			return nil, DisconnectedError(c.serverAddr.String())
+		} else {
+			return File{fname, &c}, nil
+		}
+	}
+
+	if resp.UnavailableError {
+		log.Printf("Error: File is unavailable: [%s]\n", fname)
+		return nil, FileUnavailableError(fname)
+	}
+	if resp.ConflictError {
+		log.Printf("Error: Write conflict: [%s]\n", fname)
+		return nil, OpenWriteConflictError(fname)
+	}
+
+	c.createLocalEmptyFile(fname)
+
+	WriteChunksToDisk(resp.Chunks, getFilePath(c.localPath, fname))
+
+
+	return File{fname, &c}, nil
 }
 
 func (c DFSConnection) UMountDFS() (err error) {
+	if c.currentMode == DREAD {
+		return nil
+	}
+
 	req := shared.ClientRegistrationRequest{
 		ClientId: c.clientId,
 		ClientAddress: c.localAddr.String(),
@@ -118,12 +123,15 @@ func (c DFSConnection) UMountDFS() (err error) {
 
 // Connect creates an RPC connection to the DFS server.
 // Returns an error if there was an issue connecting the server.
+// ^ todo - it should not fail on connection issue
 func (c *DFSConnection) Connect() error {
-
-	// todo - must succeed on disconnected clients. Default Mode is DREAD (but should be ignored)
 
 	server, err := rpc.Dial("tcp", c.serverAddr.String())
 	if err != nil {
+		if c.currentMode == DREAD {
+			log.Printf("Cannot reach server, continuing in disconnected mode.\n")
+			return nil
+		}
 		log.Println("Error connecting to server")
 		return err
 	}

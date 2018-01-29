@@ -1,19 +1,13 @@
 package dfslib
 
-import "net/rpc"
 import (
 	"../shared"
 	"os"
 	"log"
 )
 
-// todo - clean up this struct, most stuff is in c already
 type File struct {
 	filename string
-	clientId int
-	data []shared.Chunk
-	localPath string
-	rpcClient *rpc.Client
 	c *DFSConnection
 }
 
