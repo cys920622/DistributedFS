@@ -32,11 +32,11 @@ func main() {
 	}
 	serverAddr := os.Args[1]
 
-	//test.RunTests(serverAddr)
-
 	test.Test_1_2_1(serverAddr)
 	test.Test_1_2_2(serverAddr)
 	test.Test_1_2_3(serverAddr)
+	test.Test_1_2_4(serverAddr)
+	test.Test_1_3_1(serverAddr)
 	time.Sleep(3 * time.Second)
 	test.CleanDir("client")
 }

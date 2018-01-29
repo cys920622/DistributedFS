@@ -127,12 +127,6 @@ func clientB_1_2_1(serverAddr, localIP, localPath string, rc chan <- error) (err
 	logger.TestResult(testCase, true)
 
 	defer func() {
-		// if the client is ending with an error, do not make thing worse by issuing
-		// extra calls to the server
-		if err != nil {
-			return
-		}
-
 		if err = dfs.UMountDFS(); err != nil {
 			logger.TestResult("Unmounting DFS", false)
 			rc <- err
