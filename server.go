@@ -176,8 +176,14 @@ func (s *Server) doesFileExist(filename string) bool {
 // PingServer is called remotely (RPC) by each connected client periodically
 // to tell the server that its connection is being maintained.
 func (s *Server) PingServer(args *shared.ClientHeartbeat, reply *int) error {
-	s.ConnectedClients[args.ClientId].LatestHeartbeat = args.Timestamp
-	*reply = args.ClientId
+	_, isClientConnected := s.ConnectedClients[args.ClientId]
+	if isClientConnected {
+		s.ConnectedClients[args.ClientId].LatestHeartbeat = args.Timestamp
+		*reply = args.ClientId
+	} else {
+		// A Ping may arrive after a client has already disconnected
+		*reply = shared.UnsetClientId
+	}
 	return nil
 }
 

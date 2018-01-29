@@ -66,9 +66,13 @@ func main() {
 	//wg.Add(1)
 	//go test.Test_2_1_1(serverAddr, &wg)
 	//wg.Wait()
+	//
+	//wg.Add(1)
+	//go test.Test_2_2_1(serverAddr, &wg)
+	//wg.Wait()
 
 	wg.Add(1)
-	go test.Test_2_2_1(serverAddr, &wg)
+	go test.Test_2_2_2(serverAddr, &wg)
 	wg.Wait()
 
 	time.Sleep(2 * time.Second)

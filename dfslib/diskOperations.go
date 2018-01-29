@@ -4,7 +4,6 @@ import (
 	"../shared"
 	"log"
 	"os"
-	"fmt"
 	"strconv"
 )
 
@@ -109,7 +108,7 @@ func (c *DFSConnection) getClientIdFromDisk() (int, error) {
 		return UnsetClientID, err
 	}
 
-	fmt.Printf("Cliend ID retrieved from disk: [%d]\n", cid)
+	log.Printf("Cliend ID retrieved from disk: [%d]\n", cid)
 
 	idFile.Close()
 
