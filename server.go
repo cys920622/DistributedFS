@@ -102,6 +102,7 @@ func (s *Server) RegisterClient(args *shared.ClientRegistrationRequest, reply *i
 		s.NextClientId = s.NextClientId + 1
 		assignedClientId = s.NextClientId - 1
 		*reply = s.NextClientId - 1
+		log.Printf("Client [%d] connected\n", assignedClientId)
 	} else {
 		// Case: reconnecting client
 		// remove from DisconnectedClients and add to ConnectedClients
@@ -113,6 +114,7 @@ func (s *Server) RegisterClient(args *shared.ClientRegistrationRequest, reply *i
 		delete(s.DisconnectedClients, args.ClientId)
 		assignedClientId = args.ClientId
 		*reply = args.ClientId
+		log.Printf("Client [%d] reconnected\n", assignedClientId)
 	}
 
 	err := s.establishRPCConnection(assignedClientId)
@@ -138,7 +140,7 @@ func (s *Server) establishRPCConnection(clientId int) error {
 // RPC call target. Checks if a file by some name has ever been created.
 // Does not care if any or all of that file is offline.
 func (s *Server) CheckFileExists(args *shared.FileExistsRequest, reply *bool) error {
-	log.Printf("CheckFileExists: %s\n", args.Filename)
+	log.Printf("CheckFileExists: [%s]\n", args.Filename)
 	*reply = s.doesFileExist(args.Filename)
 	return nil
 }
@@ -224,6 +226,9 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 // ReadChunk: in READ or WRITE mode, fetches the newest version of the chunk or returns an error.
 // In DREAD mode, returns the 'best effort' version of the chunk.
 func (s *Server) ReadChunk(req *shared.GetLatestChunkRequest, resp *shared.GetLatestChunkResponse) error {
+	log.Printf("Read: ClientId: [%d], Filename [%s], Chunk [%d]",
+		req.ClientId, req.Filename, req.ChunkNum)
+
 	if req.Mode == shared.DREAD {
 		log.Println("DREAD Read is currently unsupported")
 		*resp = shared.GetLatestChunkResponse{Success: false}
@@ -320,7 +325,7 @@ func (s *Server) createNewFile(args *shared.OpenFileRequest) {
 	// Lock file if opened in WRITE mode
 	if args.Mode == shared.WRITE {fileInfo.LockHolder = args.ClientId}
 	s.Files[args.Filename] = &fileInfo
-	log.Printf("Created file: %s\n", args.Filename)
+	log.Printf("Created file: [%s]\n", args.Filename)
 }
 
 
@@ -340,7 +345,7 @@ func (s *Server) monitorClientConnections() {
 }
 
 func (s *Server) disconnectClient(clientId int) {
-	log.Printf("Client %d disconnected\n", clientId)
+	log.Printf("Client [%d] disconnected\n", clientId)
 	s.DisconnectedClients[clientId] = s.ConnectedClients[clientId]
 	delete(s.ConnectedClients, clientId)
 	s.unlockByClientId(clientId)
@@ -351,7 +356,7 @@ func (s *Server) unlockByClientId(clientId int) {
 	for fn, fi := range s.Files {
 		if fi.LockHolder == clientId {
 			fi.LockHolder = shared.UnsetClientId
-			log.Printf("Unlocked %s\n", fn)
+			log.Printf("Unlocked [%s]\n", fn)
 			}
 	}
 }

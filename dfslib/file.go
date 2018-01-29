@@ -74,7 +74,10 @@ func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 	}
 	var response shared.WriteChunkResponse
 	err = f.c.rpcClient.Call("Server.WriteChunk", request, &response)
-	if err != nil {return err}
+	if err != nil {
+		// todo - some error here
+		return err
+	}
 
 	if !response.Success {
 		// todo - maybe it should wait until lock is available? ATM this is not even possible

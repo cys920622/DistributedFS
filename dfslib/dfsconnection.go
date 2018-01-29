@@ -11,8 +11,6 @@ import (
 	"strconv"
 )
 
-// todo - remove
-
 type DFSConnection struct {
 	// Struct fields
 	clientId int
@@ -96,6 +94,7 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 
 func (c DFSConnection) UMountDFS() (err error) {
 	// todo
+	// todo - stop sending heartbeats; close TCP sockets
 	return nil
 }
 
@@ -115,19 +114,29 @@ func (c *DFSConnection) Connect() error {
 	// Establish bi-directional RPC connection
 	go c.acceptServerRPC(rpcReceivingAddr)
 
+	cidFromDisk, err := c.getClientIdFromDisk()
+	if err != nil {
+		log.Println("Error retrieving client ID from disk")
+		return err
+	}
+
 	args := shared.ClientRegistrationRequest{
-		ClientId: c.clientId,
+		ClientId: cidFromDisk,
 		ClientAddress: rpcReceivingAddr,
 		LatestHeartbeat: time.Now().UTC(),
 		}
 
-	var cid int
+	var cidResponse int
 
-	err = server.Call("Server.RegisterClient", args, &cid)
-	if cid == shared.UnsetClientId || err != nil {return err}
+	err = server.Call("Server.RegisterClient", args, &cidResponse)
+	if cidResponse == shared.UnsetClientId || err != nil {return err}
+
+	if cidFromDisk == UnsetClientID {
+		c.storeClientIdToDisk(cidResponse)
+	}
 
 	c.rpcClient = server
-	c.clientId = cid
+	c.clientId = cidResponse
 	// todo - store this ClientID on disk
 
 	// Start sending heartbeat to server
@@ -160,6 +169,7 @@ func (c *DFSConnection) sendHeartbeat() {
 	for {
 		time.Sleep(2 * time.Second)
 		c.PingServer()
+		// todo - stop pinging server on disconnect
 	}
 }
 
@@ -176,8 +186,11 @@ func (c *DFSConnection) PingServer() int {
 	if err != nil {
 		// todo - remove, or keep state
 		log.Println("Server stopped responding")
+		return 0
+		// todo - magic number
 	} else if pingReply != c.clientId {
 		log.Printf("Unexpected response '%d' from server for client %d", pingReply, c.clientId)
+		return 0
 	}
 	return pingReply
 }

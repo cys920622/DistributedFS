@@ -35,8 +35,10 @@ const (
 	DREAD
 )
 
+// todo - turn off logs
 const LoggingOn = true
 const UnsetClientID = -1
+const ClientIdFileName = "clientInfo.txt"
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 // <ERROR DEFINITIONS>
