@@ -39,7 +39,6 @@ func (c DFSConnection) GlobalFileExists(fname string) (exists bool, err error) {
 	args := shared.FileExistsRequest{Filename: fname}
 	var fileExistsReply bool
 	err = c.rpcClient.Call("Server.CheckFileExists", args, &fileExistsReply)
-	log.Println(fileExistsReply)
 	return fileExistsReply, nil
 }
 
@@ -95,7 +94,8 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 }
 
 func (c DFSConnection) UMountDFS() (err error) {
-	if c.currentMode == DREAD {
+	if !c.isConnected() {
+		log.Println("UMountDFS called but client is disconnected.")
 		return nil
 	}
 

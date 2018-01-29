@@ -36,7 +36,7 @@ const (
 )
 
 // todo - turn off logs
-const LoggingOn = true
+const LoggingOn = false
 const UnsetClientID = -1
 const ClientIdFileName = "clientInfo.txt"
 

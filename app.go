@@ -14,17 +14,47 @@ package main
 import "./dfslib"
 
 import "fmt"
-import "os"
+import (
+	"os"
+	"time"
+	"./test"
+)
 
+const ServerAddr = "127.0.0.1:8081"
 const FileName = "helloworld"
+const LocalPath1 = "/tmp/dfs-dev/"
+const LocalPath2 = "/tmp/dfs-dev1/"
 
 func main() {
-	serverAddr := "127.0.0.1:8081"
+	test.CleanDir()
+	if len(os.Args) != 2 {
+		showUsage()
+	}
+	serverAddr := os.Args[1]
+
+	//runWriterClient()
+	//runReaderClient()
+
+	//runDReaderClient()
+	//test.RunTests(serverAddr)
+	test.Test_1_2_1(serverAddr)
+	test.CleanDir()
+	test.Test_1_2_2(serverAddr)
+	test.CleanDir()
+	time.Sleep(1 * time.Second)
+}
+
+func showUsage() {
+	fmt.Fprintf(os.Stderr, "%s [server-address]\n", os.Args[0])
+	os.Exit(1)
+}
+
+func runWriterClient() {
+	fmt.Println("runWriterClient")
 	localIP := "127.0.0.1"
-	localPath := "/tmp/dfs-dev/"
 
 	// Connect to DFS.
-	dfs, err := dfslib.MountDFS(serverAddr, localIP, localPath)
+	dfs, err := dfslib.MountDFS(ServerAddr, localIP, LocalPath1)
 	if checkError(err) != nil {
 		return
 	}
@@ -34,15 +64,15 @@ func main() {
 	defer dfs.UMountDFS()
 
 	// Check if hello.txt file exists in the global DFS.
-	exists, err := dfs.GlobalFileExists(FileName)
-	if checkError(err) != nil {
-		return
-	}
-
-	if exists {
-		fmt.Println("File already exists, mission accomplished")
-		return
-	}
+	//exists, err := dfs.GlobalFileExists(FileName)
+	//if checkError(err) != nil {
+	//	return
+	//}
+	//
+	//if exists {
+	//	fmt.Println("File already exists, mission accomplished")
+	//	return
+	//}
 
 	// Open the file (and create it if it does not exist) for writing.
 	f, err := dfs.Open(FileName, dfslib.WRITE)
@@ -63,6 +93,94 @@ func main() {
 	if checkError(err) != nil {
 		return
 	}
+
+	// Read the 0th chunk of the file.
+	err = f.Read(0, &chunk)
+
+	checkError(err)
+}
+
+func runReaderClient() {
+	fmt.Printf("\nrunReaderClient\n")
+	localIP := "127.0.0.1"
+
+	// Connect to DFS.
+	dfs, err := dfslib.MountDFS(ServerAddr, localIP, LocalPath2)
+	if checkError(err) != nil {
+		return
+	}
+
+	// Close the DFS on exit.
+	// Defers are really cool, check out: https://blog.golang.org/defer-panic-and-recover
+	defer dfs.UMountDFS()
+
+	// Check if hello.txt file exists in the global DFS.
+	//exists, err := dfs.GlobalFileExists(FileName)
+	//if checkError(err) != nil {
+	//	return
+	//}
+	//
+	//if exists {
+	//	fmt.Println("File already exists, mission accomplished")
+	//	return
+	//}
+
+	// Open the file (and create it if it does not exist) for writing.
+	f, err := dfs.Open(FileName, dfslib.READ)
+	if checkError(err) != nil {
+		return
+	}
+
+	// Close the file on exit.
+	defer f.Close()
+
+	// Create a chunk with a string message.
+	var chunk dfslib.Chunk
+
+	// Read the 0th chunk of the file.
+	err = f.Read(0, &chunk)
+	checkError(err)
+}
+
+func runDReaderClient() {
+	fmt.Println("Kill server now")
+	time.Sleep(3 * time.Second)
+	fmt.Printf("\nrun[D]ReaderClient\n")
+
+	localIP := "127.0.0.1"
+
+	// Connect to DFS.
+	dfs, err := dfslib.MountDFS(ServerAddr, localIP, LocalPath1)
+	if checkError(err) != nil {
+		return
+	}
+
+	// Close the DFS on exit.
+	// Defers are really cool, check out: https://blog.golang.org/defer-panic-and-recover
+	defer dfs.UMountDFS()
+
+	// Check if hello.txt file exists in the global DFS.
+	exists, err := dfs.LocalFileExists(FileName)
+	if checkError(err) != nil {
+		return
+	}
+
+	if exists {
+		fmt.Println("File already exists, mission accomplished")
+		return
+	}
+
+	// Open the file (and create it if it does not exist) for writing.
+	f, err := dfs.Open(FileName, dfslib.DREAD)
+	if checkError(err) != nil {
+		return
+	}
+
+	// Close the file on exit.
+	defer f.Close()
+
+	// Create a chunk with a string message.
+	var chunk dfslib.Chunk
 
 	// Read the 0th chunk of the file.
 	err = f.Read(0, &chunk)
