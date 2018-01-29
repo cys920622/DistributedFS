@@ -42,6 +42,7 @@ func Test_1_2_1(serverAddr string, wg *sync.WaitGroup) {
 
 	e := <- errChannel
 	if e != nil {
+		wg.Done()
 		reportError(e)
 	} else {
 		fmt.Printf("\nALL TESTS PASSED: Test_1_2_1\n\n")

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"../dfslib"
 	"sync"
+	"time"
 )
 
 const FileName132 = "132"
@@ -38,14 +39,19 @@ func Test_1_3_2(serverAddr string, itwg *sync.WaitGroup) {
 
 	go clientA_1_3_2(serverAddr, LocalIP, clientALocalPath, errChannel, &writer, &readers)
 
+	writer.Wait()
+	time.Sleep(200 * time.Millisecond)
 	go reader_1_3_2("B", serverAddr, LocalIP, clientBLocalPath, errChannel, &readers)
+	time.Sleep(200 * time.Millisecond)
 	go reader_1_3_2("C", serverAddr, LocalIP, clientCLocalPath, errChannel, &readers)
+	time.Sleep(200 * time.Millisecond)
 	go reader_1_3_2("D", serverAddr, LocalIP, clientDLocalPath, errChannel, &readers)
 
 	readers.Wait()
 
 	e := <- errChannel
 	if e != nil {
+		itwg.Done()
 		reportError(e)
 	}
 

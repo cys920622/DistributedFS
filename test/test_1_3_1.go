@@ -34,18 +34,19 @@ func Test_1_3_1(serverAddr string, itwg *sync.WaitGroup) {
 	errChannel := make(chan error)
 
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(3)
 
 	go clientA_1_3_1(serverAddr, LocalIP, clientALocalPath, errChannel)
 	time.Sleep(500*time.Millisecond)
 
-	go check_1_3_1("B", serverAddr, LocalIP, clientBLocalPath, errChannel, &wg)
-	go check_1_3_1("C", serverAddr, LocalIP, clientCLocalPath, errChannel, &wg)
-	go check_1_3_1("D", serverAddr, LocalIP, clientDLocalPath, errChannel, &wg)
+	go checkExists_1_3_1("B", serverAddr, LocalIP, clientBLocalPath, errChannel, &wg)
+	go checkExists_1_3_1("C", serverAddr, LocalIP, clientCLocalPath, errChannel, &wg)
+	go checkExists_1_3_1("D", serverAddr, LocalIP, clientDLocalPath, errChannel, &wg)
 
 	e := <- errChannel
 
 	if e != nil {
+		itwg.Done()
 		reportError(e)
 		return
 	}
@@ -124,8 +125,7 @@ func clientA_1_3_1(serverAddr, localIP, localPath string, rc chan <- error) (err
 	return
 }
 
-func check_1_3_1(name string, serverAddr, localIP, localPath string, rc chan <- error, wg *sync.WaitGroup) (err error) {
-	defer wg.Done()
+func checkExists_1_3_1(name string, serverAddr, localIP, localPath string, rc chan <- error, wg *sync.WaitGroup) (err error) {
 	var dfs dfslib.DFS
 
 	logger := NewLogger("(1.3.1) Client " + name)
@@ -136,6 +136,7 @@ func check_1_3_1(name string, serverAddr, localIP, localPath string, rc chan <- 
 	if err != nil {
 		logger.TestResult(testCase, false)
 		rc <- err
+		wg.Done()
 		return
 	}
 	logger.TestResult(testCase, true)
@@ -144,18 +145,20 @@ func check_1_3_1(name string, serverAddr, localIP, localPath string, rc chan <- 
 		// if the client is ending with an error, do not make thing worse by issuing
 		// extra calls to the server
 		if err != nil {
+			wg.Done()
 			rc <- err
 			return
 		}
 
 		if err = dfs.UMountDFS(); err != nil {
 			logger.TestResult("Unmounting DFS", false)
+			wg.Done()
 			rc <- err
 			return
 		}
 
 		logger.TestResult("Unmounting DFS", true)
-
+		wg.Done()
 		rc <- nil
 	}()
 

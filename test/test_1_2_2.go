@@ -36,6 +36,7 @@ func Test_1_2_2(serverAddr string, wg *sync.WaitGroup) {
 
 	e := <- errChannel
 	if e != nil {
+		wg.Done()
 		reportError(e)
 	}
 	if e == nil {

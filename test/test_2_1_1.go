@@ -15,7 +15,7 @@ const FileName211 = "211"
 
 func Test_2_1_1(serverAddr string, itwg *sync.WaitGroup) {
 	fmt.Println("[2.1.1]")
-	fmt.Println("One client")
+	fmt.Println("Disconnected - One client")
 	fmt.Println("Client writes file(s), disconnects, and can use DREAD and LocalFileExists while disconnected")
 	// this creates a directory (to be used as localPath) for each client.
 	// The directories will have the format "./client{A,B}NNNNNNNNN", where
