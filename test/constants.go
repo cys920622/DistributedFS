@@ -72,13 +72,13 @@ func reportError(err error) {
 	os.Exit(1)
 }
 
-func CleanDir() {
+func CleanDir(prefix string) {
 	files, err := ioutil.ReadDir(".")
 	if err != nil {
 		fmt.Println(err)
 	}
 	for _, f := range files {
-		if strings.HasPrefix(f.Name(), "client") {
+		if strings.HasPrefix(f.Name(), prefix) {
 			os.RemoveAll(f.Name())
 		}
 	}

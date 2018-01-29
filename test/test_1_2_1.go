@@ -13,16 +13,15 @@ import (
 const FileName121 = "121"
 
 func Test_1_2_1(serverAddr string) {
+	fmt.Println("[1.2.1]")
 	fmt.Println("One reader/writer client and one writer client")
 	fmt.Println("Both clients attempt to open same file for writing")
-	CleanDir()
-	defer CleanDir()
 	// this creates a directory (to be used as localPath) for each client.
 	// The directories will have the format "./client{A,B}NNNNNNNNN", where
 	// N is an arbitrary number. Feel free to change these local paths
 	// to best fit your environment
-	clientALocalPath, errA := ioutil.TempDir(".", "clientA")
-	clientBLocalPath, errB := ioutil.TempDir(".", "clientB")
+	clientALocalPath, errA := ioutil.TempDir(".", "clientA121_")
+	clientBLocalPath, errB := ioutil.TempDir(".", "clientB121_")
 	if errA != nil || errB != nil {
 		panic("Could not create temporary directory")
 	}
@@ -36,9 +35,12 @@ func Test_1_2_1(serverAddr string) {
 	e := <- errChannel
 	if e != nil {
 		reportError(e)
+	} else {
+		fmt.Printf("\nALL TESTS PASSED: Test_1_2_1\n\n")
+		CleanDir("clientA121")
+		CleanDir("clientB121")
 	}
 
-	fmt.Printf("\nALL TESTS PASSED: Test_1_2_1\n\n")
 }
 
 func clientA_1_2_1(serverAddr, localIP, localPath string, rc chan <- error) (err error) {
