@@ -119,6 +119,9 @@ func (c DFSConnection) UMountDFS() (err error) {
 // Connect creates an RPC connection to the DFS server.
 // Returns an error if there was an issue connecting the server.
 func (c *DFSConnection) Connect() error {
+
+	// todo - must succeed on disconnected clients. Default Mode is DREAD (but should be ignored)
+
 	server, err := rpc.Dial("tcp", c.serverAddr.String())
 	if err != nil {
 		log.Println("Error connecting to server")
@@ -154,9 +157,9 @@ func (c *DFSConnection) Connect() error {
 
 	c.rpcClient = server
 	c.clientId = cidResponse
-	// todo - store this ClientID on disk
 
 	// Start sending heartbeat to server
+	c.shouldSendPing = true
 	go c.sendHeartbeat()
 
 	return nil
@@ -183,7 +186,6 @@ func (c *DFSConnection) acceptServerRPC(addr string) error {
 }
 
 func (c *DFSConnection) sendHeartbeat() {
-	c.shouldSendPing = true
 	for {
 		for c.shouldSendPing {
 			c.PingServer()
@@ -202,12 +204,10 @@ func (c *DFSConnection) PingServer() int {
 	var pingReply int
 	err := c.rpcClient.Call("Server.PingServer", args, &pingReply)
 	if err != nil {
-		// todo - remove, or keep state
 		log.Println("Server stopped responding")
 		c.shouldSendPing = false
 		c.rpcClient.Close()
 		return 0
-		// todo - magic number
 	} else if pingReply != c.clientId {
 		log.Printf("Unexpected response '%d' from server for client %d", pingReply, c.clientId)
 		c.shouldSendPing = false
