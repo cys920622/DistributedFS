@@ -39,9 +39,9 @@ func Test_1_3_1(serverAddr string) {
 	go clientA_1_3_1(serverAddr, LocalIP, clientALocalPath, errChannel)
 	time.Sleep(500*time.Millisecond)
 
-	go check_1_3_1("A", serverAddr, LocalIP, clientBLocalPath, errChannel, &wg)
-	go check_1_3_1("B", serverAddr, LocalIP, clientCLocalPath, errChannel, &wg)
-	go check_1_3_1("C", serverAddr, LocalIP, clientDLocalPath, errChannel, &wg)
+	go check_1_3_1("B", serverAddr, LocalIP, clientBLocalPath, errChannel, &wg)
+	go check_1_3_1("C", serverAddr, LocalIP, clientCLocalPath, errChannel, &wg)
+	go check_1_3_1("D", serverAddr, LocalIP, clientDLocalPath, errChannel, &wg)
 
 	e := <- errChannel
 
