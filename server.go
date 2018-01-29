@@ -123,6 +123,13 @@ func (s *Server) RegisterClient(args *shared.ClientRegistrationRequest, reply *i
 	return nil
 }
 
+// DisconnectClient removes the client from online clients. Called by unmounting.
+func (s *Server) DisconnectClient(args *shared.ClientRegistrationRequest, reply *int) error {
+	s.disconnectClient(args.ClientId)
+	*reply = args.ClientId
+	return nil
+}
+
 func (s *Server) establishRPCConnection(clientId int) error {
 	addr := s.ConnectedClients[clientId].ClientAddress
 	client, err := rpc.Dial("tcp", addr)
@@ -359,6 +366,7 @@ func (s *Server) disconnectClient(clientId int) {
 	delete(s.ConnectedClients, clientId)
 	s.unlockByClientId(clientId)
 	// todo - close file
+	// todo - return error if client was disconnected when called (or not? what about late pings)
 }
 
 func (s *Server) unlockByClientId(clientId int) {

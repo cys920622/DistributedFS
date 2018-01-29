@@ -13,12 +13,13 @@ import (
 
 type DFSConnection struct {
 	// Struct fields
-	clientId int
-	serverAddr *net.TCPAddr
-	localAddr *net.TCPAddr
-	localPath string
-	rpcClient *rpc.Client
-	currentMode FileMode
+	clientId       int
+	serverAddr     *net.TCPAddr
+	localAddr      *net.TCPAddr
+	localPath      string
+	rpcClient      *rpc.Client
+	currentMode    FileMode
+	shouldSendPing bool
 }
 
 func (c DFSConnection) LocalFileExists(fname string) (exists bool, err error) {
@@ -71,7 +72,7 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 			return nil, err
 		}
 
-		c.createLocalEmptyFile(fname) // todo - might need to do this in both cases and write over
+		c.createLocalEmptyFile(fname)
 
 		WriteChunksToDisk(resp.Chunks, getFilePath(c.localPath, fname))
 
@@ -93,9 +94,25 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 }
 
 func (c DFSConnection) UMountDFS() (err error) {
-	// todo
-	// todo - stop sending heartbeats; close TCP sockets
-	return nil
+	req := shared.ClientRegistrationRequest{
+		ClientId: c.clientId,
+		ClientAddress: c.localAddr.String(),
+		LatestHeartbeat: time.Now().UTC(),
+	}
+	var resp int
+	err = c.rpcClient.Call("Server.DisconnectClient", req, &resp)
+
+	if resp == c.clientId {
+		log.Printf("Client [%d] unmounting\n", c.clientId)
+		c.shouldSendPing = false
+		c.rpcClient.Close()
+		return nil
+	} else {
+		log.Printf("Client [%d] cannot unmount, already disconnected from server\n", c.clientId)
+		c.shouldSendPing = false
+		c.rpcClient.Close()
+		return DisconnectedError(c.serverAddr.String())
+	}
 }
 
 
@@ -166,16 +183,17 @@ func (c *DFSConnection) acceptServerRPC(addr string) error {
 }
 
 func (c *DFSConnection) sendHeartbeat() {
+	c.shouldSendPing = true
 	for {
-		time.Sleep(2 * time.Second)
-		c.PingServer()
-		// todo - stop pinging server on disconnect
+		for c.shouldSendPing {
+			c.PingServer()
+			time.Sleep(2 * time.Second)
+		}
 	}
 }
 
 func (c *DFSConnection) isConnected() bool {
-	// todo - reconsider this approach? check connected state instead from periodic ping?
-	return c.PingServer() > 0
+	return c.shouldSendPing && c.PingServer() > 0
 }
 
 // PingServer sends heartbeats to the server to keep the connection alive
@@ -186,10 +204,14 @@ func (c *DFSConnection) PingServer() int {
 	if err != nil {
 		// todo - remove, or keep state
 		log.Println("Server stopped responding")
+		c.shouldSendPing = false
+		c.rpcClient.Close()
 		return 0
 		// todo - magic number
 	} else if pingReply != c.clientId {
 		log.Printf("Unexpected response '%d' from server for client %d", pingReply, c.clientId)
+		c.shouldSendPing = false
+		c.rpcClient.Close()
 		return 0
 	}
 	return pingReply
