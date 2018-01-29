@@ -31,8 +31,6 @@ func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
 	}
 
 	if f.c.currentMode == DREAD {
-		// todo - implement
-		// todo - chunk is never unavailable in DREAD mode
 		chunkRetrieved := false
 
 		if f.c.isConnected() {
@@ -58,7 +56,10 @@ func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
 		}
 		return nil
 	} else {
-		if !f.isOpen || !f.c.isConnected() {return DisconnectedError(f.c.serverAddr.String())}
+		if !f.isOpen || !f.c.isConnected() {
+			f.isOpen = false
+			return DisconnectedError(f.c.serverAddr.String())
+		}
 
 		err = f.c.rpcClient.Call("Server.ReadChunk", req, &resp)
 		if err != nil {return err}
@@ -94,7 +95,10 @@ func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
 // NOTE - assumes file exists locally as a result of Open().
 func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 	if f.c.currentMode != WRITE {return BadFileModeError(f.c.currentMode)}
-	if !f.isOpen || !f.c.isConnected() {return DisconnectedError(f.c.serverAddr.String())}
+	if !f.isOpen || !f.c.isConnected() {
+		f.isOpen = false
+		return DisconnectedError(f.c.serverAddr.String())
+	}
 
 	request := shared.WriteChunkRequest{
 		ClientId:  f.c.clientId,
@@ -146,6 +150,7 @@ func (f File) Close() (err error) {
 		if err != nil || !res.Success {
 			log.Printf("Error: failed to close file [%s]\n", f.filename)
 			log.Println(err)
+			f.isOpen = false
 			return DisconnectedError(f.c.serverAddr.String())
 		} else {
 			f.isOpen = false
