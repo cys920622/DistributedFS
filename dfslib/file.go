@@ -4,6 +4,7 @@ import (
 	"../shared"
 	"os"
 	"log"
+	"strings"
 )
 
 type File struct {
@@ -11,6 +12,8 @@ type File struct {
 	c *DFSConnection
 }
 
+
+// RPC Target.
 // Reads chunk number chunkNum into storage pointed to by
 // chunk. Returns a non-nil error if the read was unsuccessful.
 //
@@ -43,9 +46,15 @@ func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
 
 		c := []shared.Chunk{resp.ChunkData}
 
+		copy(chunk[:], resp.ChunkData.Data[:])
+
 		if c != nil {
 			// Only update chunk locally if non-trivial data returned from server
 			err = WriteChunksToDisk(c, f.getFilePath())
+			if err != nil {return err}
+
+		} else {
+			return nil
 		}
 		return err
 	}
@@ -102,13 +111,18 @@ func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 // Closes the file/cleans up. Can return the following errors:
 // - DisconnectedError
 func (f File) Close() (err error) {
+	// todo - implement
 	// todo - set filemode to nil?
 	return nil
 }
 
 // Returns the absolute path for the file
 func (f File) getFilePath() string {
-	return f.c.localPath + f.filename + shared.FileExtension
+	if strings.HasSuffix(f.c.localPath, "/") {
+		return f.c.localPath + f.filename + shared.FileExtension
+	} else {
+		return f.c.localPath + "/" + f.filename + shared.FileExtension
+	}
 }
 
 // Convert dfslib.Chunk into a type shareable between server and client

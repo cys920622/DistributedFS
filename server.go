@@ -117,6 +117,8 @@ func (s *Server) RegisterClient(args *shared.ClientRegistrationRequest, reply *i
 		log.Printf("Client [%d] reconnected\n", assignedClientId)
 	}
 
+	s.ConnectedClients[assignedClientId].ClientId = assignedClientId
+
 	err := s.establishRPCConnection(assignedClientId)
 	if err != nil {return err}
 
@@ -207,23 +209,24 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 			_, exists := fileInfo.ChunkInfo[uint8(chunkNum)]
 			if exists {
 				chunk, err := s.getChunkBestEffort(req.Filename, uint8(chunkNum))
-				if err != nil {
-					log.Printf("Error: couldn't fetch file [%s] chunkNum [%d]\n", req.Filename, chunkNum)
-					*reply = shared.OpenFileResponse{
-						Chunks: nil, Success: false, ConflictError: false, UnavailableError: true,
-					}
-					return err
-				}
-				// todo - is it still an owner if the chunk was empty?
-				chunks = append(chunks, chunk)
+				if err == nil {chunks = append(chunks, chunk)}
 			}
+		}
+
+		if len(fileInfo.ChunkInfo) > 0 && len(chunks) == 0 {
+			log.Printf("Error: file [%s] is non-trivial but no chunks are reachable\n", req.Filename)
+			*reply = shared.OpenFileResponse{
+				Chunks: nil, Success: false, ConflictError: false, UnavailableError: true,
+			}
+			return nil
 		}
 
 		*reply = shared.OpenFileResponse{Chunks: chunks, Success: true}
 
 		// For each chunk fetched, the client is now included as an owner
 		for _, ci := range chunks {
-			fileInfo.ChunkInfo[ci.ChunkNum].ChunkOwners[ci.Version] =
+			chunkInfo := fileInfo.ChunkInfo[ci.ChunkNum]
+			chunkInfo.ChunkOwners[ci.Version] =
 				append(fileInfo.ChunkInfo[ci.ChunkNum].ChunkOwners[ci.Version], req.ClientId)
 		}
 		return nil

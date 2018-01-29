@@ -9,7 +9,8 @@ import (
 	"time"
 	"log"
 	"strconv"
-)
+	"strings"
+	)
 
 type DFSConnection struct {
 	// Struct fields
@@ -25,7 +26,7 @@ type DFSConnection struct {
 func (c DFSConnection) LocalFileExists(fname string) (exists bool, err error) {
 	if !isFileNameValid(fname) {return false, BadFilenameError(fname)}
 
-	filePath := c.localPath + fname + ".dfs"
+	filePath := getFilePath(c.localPath, fname)
 
 	_, e := os.Stat(filePath)
 
@@ -76,6 +77,7 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 		}
 	}
 
+	// todo - case where file has been written to but only trivial file can be downloaded
 	if resp.UnavailableError {
 		log.Printf("Error: File is unavailable: [%s]\n", fname)
 		return nil, FileUnavailableError(fname)
@@ -166,6 +168,7 @@ func (c *DFSConnection) Connect() error {
 	c.rpcClient = server
 	c.clientId = cidResponse
 
+
 	// Start sending heartbeat to server
 	c.shouldSendPing = true
 	go c.sendHeartbeat()
@@ -177,14 +180,25 @@ func (c *DFSConnection) Connect() error {
 // acceptServerRPC listens for RPC calls from server
 func (c *DFSConnection) acceptServerRPC(addr string) error {
 	diskService := DiskService{c: *c}
-	rpc.Register(&diskService)
+
+	server := rpc.NewServer()
+	server.Register(&diskService)
 
 	a, e :=net.ResolveTCPAddr("tcp", addr)
 	if e != nil {return e}
+
 	tcpListener, err := net.ListenTCP("tcp", a)
 	if err == nil {
 		log.Printf("Listening for server RPC calls at client address [%s]\n", addr)
-		rpc.Accept(tcpListener)
+		for {
+			conn, err := tcpListener.Accept()
+			if err != nil {
+				log.Printf("Error: failed to start server at [%s]\n", addr)
+				return err
+			}
+			log.Printf("Client at [%s] accepted connection from [%s]", addr, conn.RemoteAddr())
+			go server.ServeConn(conn)
+		}
 	} else {
 		log.Println("Failed to start server")
 		log.Println(err)
@@ -272,7 +286,11 @@ func (c *DFSConnection) createLocalEmptyFile(filename string) {
 
 // Returns the absolute path for the file
 func getFilePath(localPath string, filename string) string {
-	return localPath + filename + shared.FileExtension
+	if strings.HasSuffix(localPath, "/") {
+		return localPath + filename + shared.FileExtension
+	} else {
+		return localPath + "/" + filename + shared.FileExtension
+	}
 }
 
 func getByteOffsetFromChunkNum(chunkNum uint8) int64 {

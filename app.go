@@ -26,22 +26,19 @@ const LocalPath1 = "/tmp/dfs-dev/"
 const LocalPath2 = "/tmp/dfs-dev1/"
 
 func main() {
-	test.CleanDir()
+	test.CleanDir("client")
 	if len(os.Args) != 2 {
 		showUsage()
 	}
 	serverAddr := os.Args[1]
 
-	//runWriterClient()
-	//runReaderClient()
-
-	//runDReaderClient()
 	//test.RunTests(serverAddr)
+
 	test.Test_1_2_1(serverAddr)
-	test.CleanDir()
 	test.Test_1_2_2(serverAddr)
-	test.CleanDir()
-	time.Sleep(1 * time.Second)
+	test.Test_1_2_3(serverAddr)
+	time.Sleep(3 * time.Second)
+	test.CleanDir("client")
 }
 
 func showUsage() {
