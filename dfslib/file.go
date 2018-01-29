@@ -31,7 +31,6 @@ func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
 	} else {
 		if !f.c.isConnected() {return DisconnectedError(f.c.serverAddr.String())}
 
-		// todo - implement
 		req := shared.GetLatestChunkRequest{
 			ClientId: f.c.clientId,
 			Filename: f.filename,
@@ -49,7 +48,11 @@ func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
 		}
 
 		c := []shared.Chunk{resp.ChunkData}
-		err = WriteChunksToDisk(c, f.getFilePath())
+
+		if c != nil {
+			// Only update chunk locally if non-trivial data returned from server
+			err = WriteChunksToDisk(c, f.getFilePath())
+		}
 		return err
 	}
 }

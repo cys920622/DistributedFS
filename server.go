@@ -207,6 +207,7 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 					}
 					return err
 				}
+				// todo - is it still an owner if the chunk was empty?
 				chunks = append(chunks, chunk)
 			}
 		}
@@ -222,7 +223,6 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 	}
 }
 
-// todo - add client to owners for that chunk
 // ReadChunk: in READ or WRITE mode, fetches the newest version of the chunk or returns an error.
 // In DREAD mode, returns the 'best effort' version of the chunk.
 func (s *Server) ReadChunk(req *shared.GetLatestChunkRequest, resp *shared.GetLatestChunkResponse) error {
@@ -236,7 +236,16 @@ func (s *Server) ReadChunk(req *shared.GetLatestChunkRequest, resp *shared.GetLa
 	}
 
 	fileInfo := s.Files[req.Filename]
-	currentVersion := fileInfo.ChunkInfo[req.ChunkNum].CurrentVersion
+
+	chunkInfo, exists := fileInfo.ChunkInfo[req.ChunkNum]
+
+	if !exists {
+		// File exists but chunk has never been written to
+		*resp = shared.GetLatestChunkResponse{Success: true}
+		return nil
+	}
+
+	currentVersion := chunkInfo.CurrentVersion
 	chunk, e := s.getChunkByVersion(req.Filename, req.ChunkNum, currentVersion)
 
 	if e != nil {
