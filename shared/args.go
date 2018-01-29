@@ -55,6 +55,16 @@ type OpenFileResponse struct {
 	UnavailableError bool
 }
 
+type CloseFileRequest struct {
+	ClientId int
+	Filename string
+	Mode FileMode
+}
+
+type CloseFileResponse struct {
+	Success bool
+}
+
 type GetLatestChunkRequest struct {
 	ClientId int
 	Filename string

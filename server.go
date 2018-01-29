@@ -233,6 +233,29 @@ func (s *Server) OpenFile(req *shared.OpenFileRequest, reply *shared.OpenFileRes
 	}
 }
 
+// RPC target
+// CloseFile unlocks the file if the mode was WRITE
+func (s *Server) CloseFile(req *shared.CloseFileRequest, res *shared.CloseFileResponse) error {
+	log.Printf("CloseFile: client [%d], filename [%s]\n", req.ClientId, req.Filename)
+
+	if req.Mode != shared.WRITE {
+		*res = shared.CloseFileResponse{Success: true}
+		return nil
+	}
+
+	lockHolder := s.Files[req.Filename].LockHolder
+	if lockHolder == req.ClientId {
+		s.Files[req.Filename].LockHolder = shared.UnsetClientId
+		log.Printf("Unlocked [%s.dfs]\n", req.Filename)
+		*res = shared.CloseFileResponse{Success: true}
+	} else {
+		log.Printf("Error: cannot unlock file [%s] as client [%d] does not have the lock\n",
+			req.Filename, req.ClientId)
+		*res = shared.CloseFileResponse{Success: false}
+	}
+	return nil
+}
+
 // ReadChunk: in READ or WRITE mode, fetches the newest version of the chunk or returns an error.
 // In DREAD mode, returns the 'best effort' version of the chunk.
 func (s *Server) ReadChunk(req *shared.GetLatestChunkRequest, resp *shared.GetLatestChunkResponse) error {
@@ -376,7 +399,7 @@ func (s *Server) unlockByClientId(clientId int) {
 	for fn, fi := range s.Files {
 		if fi.LockHolder == clientId {
 			fi.LockHolder = shared.UnsetClientId
-			log.Printf("Unlocked [%s]\n", fn)
+			log.Printf("Unlocked [%s.dfs]\n", fn)
 			}
 	}
 }

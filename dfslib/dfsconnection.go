@@ -54,7 +54,7 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 		} else {
 			exists, _ := c.LocalFileExists(fname)
 			if exists {
-				return File{fname, &c}, nil
+				return File{fname, &c, true}, nil
 			} else {
 				return nil, FileDoesNotExistError(fname)
 			}
@@ -73,7 +73,7 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 		if mode == READ || mode == WRITE {
 			return nil, DisconnectedError(c.serverAddr.String())
 		} else {
-			return File{fname, &c}, nil
+			return File{fname, &c, true}, nil
 		}
 	}
 
@@ -91,8 +91,7 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 
 	WriteChunksToDisk(resp.Chunks, getFilePath(c.localPath, fname))
 
-
-	return File{fname, &c}, nil
+	return File{fname, &c, true}, nil
 }
 
 func (c DFSConnection) UMountDFS() (err error) {

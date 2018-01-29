@@ -10,6 +10,7 @@ import (
 type File struct {
 	filename string
 	c *DFSConnection
+	isOpen bool
 }
 
 
@@ -26,7 +27,7 @@ func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
 		// todo - chunk is never unavailable in DREAD mode
 		return nil
 	} else {
-		if !f.c.isConnected() {return DisconnectedError(f.c.serverAddr.String())}
+		if !f.isOpen || !f.c.isConnected() {return DisconnectedError(f.c.serverAddr.String())}
 
 		req := shared.GetLatestChunkRequest{
 			ClientId: f.c.clientId,
@@ -70,8 +71,7 @@ func (f File) Read(chunkNum uint8, chunk *Chunk) (err error) {
 // NOTE - assumes file exists locally as a result of Open().
 func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 	if f.c.currentMode != WRITE {return BadFileModeError(f.c.currentMode)}
-
-	if !f.c.isConnected() {return DisconnectedError(f.c.serverAddr.String())}
+	if !f.isOpen || !f.c.isConnected() {return DisconnectedError(f.c.serverAddr.String())}
 
 	request := shared.WriteChunkRequest{
 		ClientId:  f.c.clientId,
@@ -109,11 +109,28 @@ func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 }
 
 // Closes the file/cleans up. Can return the following errors:
-// - DisconnectedError
+// - DisconnectedError (in READ/WRITE)
 func (f File) Close() (err error) {
-	// todo - implement
-	// todo - set filemode to nil?
-	return nil
+	if f.c.currentMode == DREAD {
+		f.isOpen = false
+		return nil
+	}
+	if f.isOpen {
+		req := shared.CloseFileRequest{
+			ClientId: f.c.clientId, Filename: f.filename, Mode: convertMode(f.c.currentMode)}
+		var res shared.CloseFileResponse
+		err := f.c.rpcClient.Call("Server.CloseFile", req, &res)
+		if err != nil || !res.Success {
+			log.Printf("Error: failed to close file [%s]\n", f.filename)
+			log.Println(err)
+			return DisconnectedError(f.c.serverAddr.String())
+		} else {
+			f.isOpen = false
+			return nil
+		}
+	} else {
+		return DisconnectedError(f.c.serverAddr.String())
+	}
 }
 
 // Returns the absolute path for the file
