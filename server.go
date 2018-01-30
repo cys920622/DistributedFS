@@ -373,10 +373,17 @@ func (s *Server) getChunkByVersion(filename string, chunkNum uint8, ver int) (ch
 
 
 // WriteChunk records a Write event in the file's metadata.
-// Assumes that the writer has the write lock.
+// Cannot assume the client has the lock because they may have timed out.
 func (s *Server) WriteChunk(args *shared.WriteChunkRequest, reply *shared.WriteChunkResponse) error {
 	// Add client as newest chunk version owner and increment chunk version
-	fileInfo := s.Files[args.Filename]
+	fileInfo, exists := s.Files[args.Filename]
+
+	// File open failed, or write mode has timed out
+	if !exists || fileInfo.LockHolder != args.ClientId {
+		*reply = shared.WriteChunkResponse{Success: false}
+		return nil
+	}
+
 	if fileInfo.ChunkInfo[args.ChunkNum] == nil {
 		// Chunk has never been written to
 		owners := make(map[int][]int)

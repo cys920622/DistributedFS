@@ -20,6 +20,7 @@ type DFSConnection struct {
 	rpcClient      *rpc.Client
 	currentMode    FileMode
 	shouldSendPing bool
+	files 		   map[string]*File
 }
 
 func (c DFSConnection) LocalFileExists(fname string) (exists bool, err error) {
@@ -34,7 +35,10 @@ func (c DFSConnection) LocalFileExists(fname string) (exists bool, err error) {
 
 func (c DFSConnection) GlobalFileExists(fname string) (exists bool, err error) {
 	if !isFileNameValid(fname) {return false, BadFilenameError(fname)}
-	if !c.isConnected() {return false, DisconnectedError(c.serverAddr.String())}
+	if !c.isConnected() {
+		c.closeFile(fname)
+		return false, DisconnectedError(c.serverAddr.String())
+	}
 
 	args := shared.FileExistsRequest{Filename: fname}
 	var fileExistsReply bool
@@ -49,11 +53,12 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 
 	if !c.isConnected() {
 		if mode == READ || mode == WRITE {
+			c.closeFile(fname)
 			return nil, DisconnectedError(c.serverAddr.String())
 		} else {
 			exists, _ := c.LocalFileExists(fname)
 			if exists {
-				return File{fname, &c, true}, nil
+				return c.createFileInstance(fname, true)
 			} else {
 				return nil, FileDoesNotExistError(fname)
 			}
@@ -70,9 +75,10 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 
 	if err != nil {
 		if mode == READ || mode == WRITE {
+			c.closeFile(fname)
 			return nil, DisconnectedError(c.serverAddr.String())
 		} else {
-			return File{fname, &c, true}, nil
+			return c.createFileInstance(fname, true)
 		}
 	}
 
@@ -89,10 +95,13 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 
 	WriteChunksToDisk(resp.Chunks, getFilePath(c.localPath, fname))
 
-	return File{fname, &c, true}, nil
+	return c.createFileInstance(fname, true)
 }
 
 func (c DFSConnection) UMountDFS() (err error) {
+
+	c.closeAllFiles()
+
 	if !c.isConnected() {
 		log.Println("UMountDFS called but client is disconnected.")
 		return nil
@@ -116,6 +125,25 @@ func (c DFSConnection) UMountDFS() (err error) {
 		c.shouldSendPing = false
 		c.rpcClient.Close()
 		return DisconnectedError(c.serverAddr.String())
+	}
+}
+
+func (c *DFSConnection) closeAllFiles() {
+	log.Println("Closing all files")
+	for _, file := range c.files {
+		file.isOpen = false
+	}
+}
+
+func (c *DFSConnection) closeFile(filename string) error {
+	_, exists := c.files[filename]
+	if !exists {
+		log.Printf("Error: close file that does not exist [%s]\n", filename)
+		return FileDoesNotExistError(filename)
+	} else {
+		log.Printf("Closing file [%s]\n", filename)
+		c.files[filename].isOpen = false
+		return nil
 	}
 }
 
@@ -229,10 +257,10 @@ func (c *DFSConnection) acceptServerRPC() (ipAddr string) {
 
 func (c *DFSConnection) sendHeartbeat() {
 	for {
-		for c.shouldSendPing {
+		if c.shouldSendPing {
 			c.PingServer()
-			time.Sleep(2 * time.Second)
 		}
+		time.Sleep(2 * time.Second)
 	}
 }
 
@@ -242,6 +270,7 @@ func (c *DFSConnection) isConnected() bool {
 
 // PingServer sends heartbeats to the server to keep the connection alive
 func (c *DFSConnection) PingServer() int {
+
 	args := shared.ClientHeartbeat{ClientId: c.clientId, Timestamp: time.Now().UTC()}
 	var pingReply int
 	err := c.rpcClient.Call("Server.PingServer", args, &pingReply)
@@ -251,7 +280,7 @@ func (c *DFSConnection) PingServer() int {
 		c.rpcClient.Close()
 		return 0
 	} else if pingReply != c.clientId {
-		log.Printf("Unexpected response '%d' from server for client %d", pingReply, c.clientId)
+		log.Printf("Server rejected ping for client %d", c.clientId)
 		c.shouldSendPing = false
 		c.rpcClient.Close()
 		return 0
@@ -302,6 +331,14 @@ func (c *DFSConnection) createLocalEmptyFile(filename string) {
 		}
 		f.Close()
 	}
+}
+
+func (c DFSConnection) createFileInstance(filename string, isConnected bool) (f *File, err error) {
+	if !isFileNameValid(filename) {return nil, BadFilenameError(filename)}
+
+	f = &File{filename, &c, true}
+	c.files[filename] = f
+	return
 }
 
 // Returns the absolute path for the file

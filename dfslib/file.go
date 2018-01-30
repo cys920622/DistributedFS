@@ -114,8 +114,8 @@ func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 	}
 
 	if !response.Success {
-		// todo - maybe it should wait until lock is available? ATM this is not even possible
-		return WriteModeTimeoutError("???")
+		// Possible transitory disconnection
+		return WriteModeTimeoutError(f.filename)
 	}
 	// Commit write locally
 	diskFile, err := os.OpenFile(f.getFilePath(), os.O_WRONLY, 0666)

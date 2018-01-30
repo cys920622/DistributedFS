@@ -214,6 +214,7 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 		nil,
 		DREAD,
 		false,
+		make(map[string]*File),
 		}
 	networkErr := conn.Connect()
 	if err == nil && networkErr != nil {err = networkErr}
