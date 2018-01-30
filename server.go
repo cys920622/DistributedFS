@@ -9,6 +9,7 @@ import (
 	"time"
 	"log"
 	"io/ioutil"
+	"flag"
 )
 
 const ClientTimeoutThreshold = 2.5
@@ -57,11 +58,17 @@ type Server struct {
 
 
 func main() {
-	if !LoggingOn {
+	isLoggingOn := flag.Bool("log", false, "a bool")
+	flag.Parse()
+	if len(flag.Args()) != 1 {
+		fmt.Fprintln(os.Stderr, "./server [-log] [server-address]")
+		os.Exit(1)
+	}
+	clientIncomingAddr := flag.Arg(0)
+
+	if !*isLoggingOn {
 		log.SetOutput(ioutil.Discard)
 	}
-
-	clientIncomingAddr := os.Args[1]
 
 	newServer := rpc.NewServer()
 	server := &Server{
