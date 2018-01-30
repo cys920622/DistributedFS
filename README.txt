@@ -17,5 +17,7 @@ For debugging purposes only.
 logging to the console. Should normally be turned off.
 
 
->Running unit tests:
-Unit tests can be run with app.go [server-address:port].
+>Running integration tests:
+Integration tests can be run with app.go [server-address:port].
+Since they spin up multiple DFS instances that run in concurrent goroutines,
+they are unfortunately extra prone to concurrent map write exceptions and races.

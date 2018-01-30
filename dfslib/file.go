@@ -14,7 +14,6 @@ type File struct {
 }
 
 
-// RPC Target.
 // Reads chunk number chunkNum into storage pointed to by
 // chunk. Returns a non-nil error if the read was unsuccessful.
 //
