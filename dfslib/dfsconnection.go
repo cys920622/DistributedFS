@@ -76,7 +76,6 @@ func (c DFSConnection) Open(fname string, mode FileMode) (f DFSFile, err error) 
 		}
 	}
 
-	// todo - case where file has been written to but only trivial file can be downloaded
 	if resp.UnavailableError {
 		log.Printf("Error: File is unavailable: [%s]\n", fname)
 		return nil, FileUnavailableError(fname)

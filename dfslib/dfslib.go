@@ -201,7 +201,6 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 	serverTCPAddr, e := net.ResolveTCPAddr("tcp", serverAddr)
 	if e != nil {err = e}
 
-	//tcpAddr := localIP + ":" + strconv.Itoa(getFreeLocalPort(localIP))
 	tcpAddr := localIP + ":0"
 
 	localTCPAddr, e := net.ResolveTCPAddr("tcp", tcpAddr)
@@ -213,7 +212,7 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 		localTCPAddr,
 		localPath,
 		nil,
-		DREAD, // todo - is this right???
+		DREAD,
 		false,
 		}
 	networkErr := conn.Connect()

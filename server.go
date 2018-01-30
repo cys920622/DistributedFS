@@ -285,7 +285,6 @@ func (s *Server) ReadChunk(req *shared.GetLatestChunkRequest, resp *shared.GetLa
 		req.ClientId, req.Filename, req.ChunkNum)
 
 	if req.Mode == shared.DREAD {
-		// todo - implement
 		chunk, err := s.getChunkBestEffort(req.Filename, req.ChunkNum)
 		if err != nil {
 			*resp = shared.GetLatestChunkResponse{Success: false}
@@ -418,11 +417,12 @@ func (s *Server) monitorClientConnections() {
 
 func (s *Server) disconnectClient(clientId int) {
 	log.Printf("Client [%d] disconnected\n", clientId)
-	s.DisconnectedClients[clientId] = s.ConnectedClients[clientId]
-	delete(s.ConnectedClients, clientId)
+	_, clientExists := s.ConnectedClients[clientId]
+	if clientExists {
+		s.DisconnectedClients[clientId] = s.ConnectedClients[clientId]
+		delete(s.ConnectedClients, clientId)
+	}
 	s.unlockByClientId(clientId)
-	// todo - close file
-	// todo - return error if client was disconnected when called (or not? what about late pings)
 }
 
 func (s *Server) unlockByClientId(clientId int) {
@@ -430,7 +430,7 @@ func (s *Server) unlockByClientId(clientId int) {
 		if fi.LockHolder == clientId {
 			fi.LockHolder = shared.UnsetClientId
 			log.Printf("Unlocked [%s.dfs]\n", fn)
-			}
+		}
 	}
 }
 

@@ -108,7 +108,8 @@ func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 	var response shared.WriteChunkResponse
 	err = f.c.rpcClient.Call("Server.WriteChunk", request, &response)
 	if err != nil {
-		// todo - some error here
+		log.Println("Error with RPC call to server")
+		log.Println(err)
 		return err
 	}
 
