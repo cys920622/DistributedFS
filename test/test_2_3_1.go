@@ -67,9 +67,9 @@ func Test_2_3_1(serverAddr string, itwg *sync.WaitGroup) {
 		reportError(err)
 	} else {
 		fmt.Printf("\nALL TESTS PASSED: Test_2_3_1\n\n")
+		itwg.Done()
 		CleanDir("clientA231")
 		CleanDir("clientB231")
-		itwg.Done()
 		return
 	}
 }
@@ -220,6 +220,11 @@ func read_2_3_1(name, serverAddr, localIP, localPath string, rc chan <- error, r
 
 func dread_compare_2_3_1(n0, n1, serverAddr, localIP0,
 					     localIP1, localPath0, localPath1 string, rc chan <- error) (isIdentical bool, err error) {
+
+	for i := ServerShutdownTimer; i > 0; i-- {
+		fmt.Printf("SHUT DOWN SERVER NOW: [%d]\n", i)
+		time.Sleep(1 * time.Second)
+	}
 
 	// Client C
 	var dfs0 dfslib.DFS
