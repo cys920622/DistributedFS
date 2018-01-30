@@ -117,7 +117,7 @@ func (f File) Write(chunkNum uint8, chunk *Chunk) (err error) {
 		return WriteModeTimeoutError("???")
 	}
 	// Commit write locally
-	diskFile, err := os.OpenFile(f.getFilePath(), os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	diskFile, err := os.OpenFile(f.getFilePath(), os.O_WRONLY, 0666)
 	if err != nil {
 		log.Printf("Error: cannot open file [%s]\n", f.filename)
 		return err

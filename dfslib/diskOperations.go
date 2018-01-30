@@ -57,7 +57,7 @@ func ReadChunkFromDisk(filePath string, chunkNum uint8) (shared.Chunk, error) {
 }
 
 func WriteChunksToDisk(chunks []shared.Chunk, filePath string) error {
-	diskFile, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	diskFile, err := os.OpenFile(filePath, os.O_WRONLY, 0666)
 	if err != nil {
 		log.Printf("Error: cannot open file [%s]\n", filePath)
 		return err
@@ -128,7 +128,7 @@ func (c *DFSConnection) storeClientIdToDisk(cid int) error {
 		f.Close()
 	}
 
-	cidFile, err := os.OpenFile(cidFilePath, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	cidFile, err := os.OpenFile(cidFilePath, os.O_WRONLY, 0666)
 	if err != nil {
 		log.Printf("Error: cannot open file [%s]\n", cidFilePath)
 		return err
