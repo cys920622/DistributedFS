@@ -208,6 +208,7 @@ func clientAVerifyBWrite_2_2_2(serverAddr, localIP, localPath string, rc chan <-
 
 	if err != nil {
 		logger.TestResult(testCase, false)
+		fmt.Println(err)
 		rc <- err
 		writerA.Done()
 		return

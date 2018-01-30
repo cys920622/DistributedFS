@@ -201,6 +201,7 @@ func reader_1_3_2(name, serverAddr, localIP, localPath string, rc chan <- error,
 
 	if err != nil {
 		logger.TestResult(testCase, false)
+		fmt.Println(err)
 		rc <- err
 		readers.Done()
 		return

@@ -122,6 +122,7 @@ func clientA__2_2_1_Read(serverAddr, localIP, localPath string) (err error) {
 
 	if err != nil {
 		logger.TestResult(testCase, false)
+		fmt.Println(err)
 		return
 	}
 

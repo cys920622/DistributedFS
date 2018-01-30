@@ -145,6 +145,7 @@ func clientA_1_2_4(serverAddr, localIP, localPath string, rc chan <- error) (err
 
 	if err != nil {
 		logger.TestResult(testCase, false)
+		fmt.Println(err)
 		rc <- err
 		return
 	}

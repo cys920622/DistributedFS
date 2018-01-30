@@ -161,6 +161,7 @@ func clientA_2_1_1(serverAddr, localIP, localPath string) (err error) {
 
 	if err != nil {
 		logger.TestResult(testCase, false)
+		fmt.Println(err)
 		return
 	}
 

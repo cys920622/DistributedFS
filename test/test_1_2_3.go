@@ -186,6 +186,7 @@ func clientB_1_2_3(serverAddr, localIP, localPath string, rc chan <- error) (err
 
 	if err != nil {
 		logger.TestResult(testCase, false)
+		fmt.Println(err)
 		rc <- err
 		return
 	}
