@@ -8,9 +8,8 @@ import (
 	"../shared"
 	"time"
 	"log"
-	"strconv"
 	"strings"
-	)
+)
 
 type DFSConnection struct {
 	// Struct fields
@@ -137,11 +136,14 @@ func (c *DFSConnection) Connect() error {
 		return err
 	}
 
-	freePortNum := getFreeLocalPort(c.localAddr.IP.String())
-	rpcReceivingAddr := c.localAddr.IP.String() + ":" + strconv.Itoa(freePortNum)
-
 	// Establish bi-directional RPC connection
-	go c.acceptServerRPC(rpcReceivingAddr)
+	tcpAddr := c.acceptServerRPC()
+	c.localAddr, err = net.ResolveTCPAddr("tcp", tcpAddr)
+	if err != nil {
+		log.Println("Error ")
+		return err
+	}
+
 
 	cidFromDisk, err := c.getClientIdFromDisk()
 	if err != nil {
@@ -151,7 +153,7 @@ func (c *DFSConnection) Connect() error {
 
 	args := shared.ClientRegistrationRequest{
 		ClientId: cidFromDisk,
-		ClientAddress: rpcReceivingAddr,
+		ClientAddress: c.localAddr.String(),
 		LatestHeartbeat: time.Now().UTC(),
 		}
 
@@ -177,33 +179,53 @@ func (c *DFSConnection) Connect() error {
 
 
 // acceptServerRPC listens for RPC calls from server
-func (c *DFSConnection) acceptServerRPC(addr string) error {
+func (c *DFSConnection) acceptServerRPC() (ipAddr string) {
 	diskService := DiskService{c: *c}
 
 	server := rpc.NewServer()
 	server.Register(&diskService)
 
-	a, e :=net.ResolveTCPAddr("tcp", addr)
-	if e != nil {return e}
+	log.Printf("LocalAddr: %s\n", c.localAddr.String())
 
-	tcpListener, err := net.ListenTCP("tcp", a)
-	if err == nil {
-		log.Printf("Listening for server RPC calls at client address [%s]\n", addr)
-		for {
-			conn, err := tcpListener.Accept()
-			if err != nil {
-				log.Printf("Error: failed to start server at [%s]\n", addr)
-				return err
-			}
-			log.Printf("Client at [%s] accepted connection from [%s]", addr, conn.RemoteAddr())
-			go server.ServeConn(conn)
-		}
-	} else {
-		log.Println("Failed to start server")
-		log.Println(err)
+	a, e :=net.ResolveTCPAddr("tcp", c.localAddr.String())
+
+	if e != nil {
+		log.Println("Error resolving IP address")
+		log.Println(e)
+		return
 	}
 
-	return err
+	tcpListener, err := net.ListenTCP("tcp", a)
+
+	ipAddr = tcpListener.Addr().String()
+
+	log.Printf("tcpListner addr: [%s]\n", ipAddr)
+
+	go func() {
+		if err == nil {
+			log.Printf("Listening for server RPC calls at client address [%s]\n", ipAddr)
+			for {
+				conn, err := tcpListener.Accept()
+				if err != nil {
+					log.Printf("Error: failed to start server at [%s]\n", ipAddr)
+					return
+				}
+				log.Printf("Client at [%s] accepted connection from [%s]", ipAddr, conn.RemoteAddr())
+				go server.ServeConn(conn)
+			}
+		} else {
+			log.Println("Failed to start server")
+			log.Println(err)
+		}
+	}()
+
+	if err != nil {
+		log.Println("Error accepting server RPC")
+		log.Println(err)
+		return
+	} else {
+		return
+	}
 }
 
 func (c *DFSConnection) sendHeartbeat() {

@@ -41,25 +41,35 @@ func main() {
 		go test.Test_1_2_1(serverAddr, &wg)
 		wg.Wait()
 
+		//time.Sleep(2 * time.Second)
+
 		wg.Add(1)
 		go test.Test_1_2_2(serverAddr, &wg)
 		wg.Wait()
+
+		//time.Sleep(2 * time.Second)
 
 		wg.Add(1)
 		go test.Test_1_2_3(serverAddr, &wg)
 		wg.Wait()
 
+		//time.Sleep(2 * time.Second)
+
 		wg.Add(1)
 		go test.Test_1_2_4(serverAddr, &wg)
 		wg.Wait()
+
+		//time.Sleep(2 * time.Second)
 
 		wg.Add(1)
 		go test.Test_1_3_1(serverAddr, &wg)
 		wg.Wait()
 
-		wg.Add(1)
-		go test.Test_1_3_2(serverAddr, &wg)
-		wg.Wait()
+		//time.Sleep(2 * time.Second)
+		//
+		//wg.Add(1)
+		//go test.Test_1_3_2(serverAddr, &wg)
+		//wg.Wait()
 	}
 
 
@@ -73,9 +83,13 @@ func main() {
 	//wg.Wait()
     // ----------------------------------------------
 
+	//time.Sleep(2 * time.Second)
+
 	wg.Add(1)
 	go test.Test_2_2_1(serverAddr, &wg)
 	wg.Wait()
+
+	//time.Sleep(2 * time.Second)
 
 	wg.Add(1)
 	go test.Test_2_2_2(serverAddr, &wg)

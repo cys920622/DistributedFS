@@ -14,7 +14,6 @@ import (
 	"net"
 	"log"
 	"../shared"
-	"strconv"
 	"io/ioutil"
 )
 
@@ -202,7 +201,8 @@ func MountDFS(serverAddr string, localIP string, localPath string) (dfs DFS, err
 	serverTCPAddr, e := net.ResolveTCPAddr("tcp", serverAddr)
 	if e != nil {err = e}
 
-	tcpAddr := localIP + ":" + strconv.Itoa(getFreeLocalPort(localIP))
+	//tcpAddr := localIP + ":" + strconv.Itoa(getFreeLocalPort(localIP))
+	tcpAddr := localIP + ":0"
 
 	localTCPAddr, e := net.ResolveTCPAddr("tcp", tcpAddr)
 	if e != nil {err = e}
@@ -233,12 +233,4 @@ func CheckLocalPath(localPath string) error {
 		log.Println("Bad local path")
 		return LocalPathError(localPath)
 	}
-}
-
-// Find free local port number
-func getFreeLocalPort(localIP string) int {
-	I, _ := net.Listen("tcp", localIP + ":0")
-	I.Close()
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", I.Addr().String())
-	return tcpAddr.Port
 }

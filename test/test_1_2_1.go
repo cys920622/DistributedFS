@@ -103,9 +103,7 @@ func clientA_1_2_1(serverAddr, localIP, localPath string, rc chan <- error, wg, 
 		}
 
 		wg.Done()
-		fmt.Println("x")
 		next.Wait()
-		fmt.Println("y")
 
 		testCase := fmt.Sprintf("Closing file '%s'", FileName121)
 
